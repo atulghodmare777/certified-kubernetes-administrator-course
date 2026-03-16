@@ -78,7 +78,7 @@ In this section, we will talk about "Node Affinity" feature in kubernetes.
             - key: size
               operator: Exists
   ```
-  
+  ## When we have only key available with no value still we can provide in affinity with operator "Exists". 
   ![na2](../../images/na2.PNG)
   
 
