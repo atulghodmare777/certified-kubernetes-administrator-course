@@ -24,9 +24,9 @@ In this section, we will take a look at taints and tolerations.
   
 - The taint effect defines what would happen to the pods if they do not tolerate the taint.
 - There are 3 taint effects
-  - **`NoSchedule`**
-  - **`PreferNoSchedule`**
-  - **`NoExecute`**
+  - **`NoSchedule`** : means pod will not schedule on the node if toleration is not present. NoSchedule only affects new pods. If a pod is already running on the node without toleration, nothing happens. It continues running normally.
+  - **`PreferNoSchedule`** : The system will try to avoid placing pod on the node, but that is not guaranteed.
+  - **`NoExecute`** : Means new pods will not schedule on the node and existing pods if exist on the node will be evicted from the node if they do not tolerate the taint
   
   ![tn](../../images/tn.PNG)
   
