@@ -84,8 +84,11 @@ In this section, we will talk about "Node Affinity" feature in kubernetes.
 
 ## Node Affinity Types
 - Available
-  - requiredDuringSchedulingIgnoredDuringExecution
+  - requiredDuringSchedulingIgnoredDuringExecution : Means while scheduling the pod strictly follow the affinity means if no node available with lable then pod        requiredDuringScheduling >The scheduler must find a node that matches the affinity rule.If no node has the required label, the pod will stay in Pending state.
+    IgnoredDuringExecution > Once the pod is running, Kubernetes does not re-check the rule.If someone removes the label from the node later, the pod will NOT be evicted.
   - preferredDuringSchedulingIgnoredDuringExecution
+    preferredDuringScheduling > The scheduler tries to schedule the pod on nodes matching the label.But if no such node is available, the pod can still be scheduled on any node.
+    IgnoredDuringExecution > After the pod is running, Kubernetes will not enforce the rule again.If the label is removed later, the pod will continue running.
 - Planned
   - requiredDuringSchedulingRequiredDuringExecution
   - preferredDuringSchedulingRequiredDuringExecution
