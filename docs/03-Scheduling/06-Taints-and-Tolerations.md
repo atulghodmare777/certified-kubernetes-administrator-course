@@ -52,6 +52,7 @@ In this section, we will take a look at taints and tolerations.
     
 
 #### Taints and Tolerations do not tell the pod to go to a particular node. Instead, they tell the node to only accept pods with certain tolerations. Hence pod with toleration can be placed on node which do not have taint applied to it.
+#### When we set up cluster k8s taint master node so that workloads should not be placed on master by scheduler. Hence pods are not schedule on master node
 - To see this taint, run the below command
   ```
   $ kubectl describe node kubemaster |grep Taint
