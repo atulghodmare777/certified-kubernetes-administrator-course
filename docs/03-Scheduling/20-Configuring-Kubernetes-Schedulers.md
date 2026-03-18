@@ -264,17 +264,7 @@ Custom scheduler = advanced use case
 
 ---
 
-## 🧠 Why this is now “complete”
 
-This version gives you:
-- ✔ Internal flow (deep understanding)  
-- ✔ Default vs custom scheduler  
-- ✔ **Multi-profile (very important for modern Kubernetes)**  
-- ✔ Practical usage (how pods actually use it)  
-- ✔ Plugin customization  
-- ✔ Real-world scenarios  
-
----
 
 
 ## References
