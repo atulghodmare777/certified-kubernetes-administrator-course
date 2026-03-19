@@ -178,4 +178,4 @@ kubectl get secrets --all-namespaces -o json | kubectl replace -f -
 | Existing Secrets | Not encrypted      | Must be re-applied |
 
 ---
-
+ref: https://kubernetes.io/docs/tasks/administer-cluster/encrypt-data/
