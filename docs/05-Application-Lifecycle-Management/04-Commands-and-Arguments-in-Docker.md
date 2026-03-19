@@ -50,6 +50,25 @@ In this section, we will take a look at commands and arguments in docker
   
 ## Entrypoint Instruction
 - The entrypoint instruction is like the command instruction as in you can specify the program that will be run when the container starts and whatever you specify on the command line.
+- 
+  FROM Ubuntu
+  ENTRYPOINT ["sleep"]
+  For this docker file we can pass the argument while running the container
+  docker run ubuntu-sleeper 10
+  We do not have to add the "sleep" process it will automatically append
+-In cmd what we pass will get replaced entirely but in entrypoint command line paramters get appended.
+- If i run the command without appending the number of senconds
+  exa: docker run ubuntu-sleeper > we get the error the operand is missing
+  How to configure default value if it is not passed in command line
+  FROM ubuntu
+  ENTRYPOINT ["sleep"]
+  cmd ["5"]
+  In this way if command line will be appended with command line instruction
+  If we pass - docker run ubuntu-sleeper 10 > then it will override the cmd instruction but if didnt pass then it will take default
+- If i want to modify the entrypoint during runtime to sleep to imaginary sleep2.0 command
+  we can do it by following way:
+  exa: docker run --entrypoint sleep2.0 ubuntu-sleeper 10
+  
 
 #### K8s Reference Docs
 - https://docs.docker.com/engine/reference/builder/#cmd
