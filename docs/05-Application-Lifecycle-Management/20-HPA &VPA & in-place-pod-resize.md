@@ -9,8 +9,7 @@ In Kubernetes, every Pod requires:
 - Memory
 
 But defining correct values is difficult:
-
-- Too low → Pod crashes (`OOMKilled`)
+- Too low → Pod crashes (OOMKilled)
 - Too high → Resource wastage
 
 👉 Solution: **Autoscaling**
@@ -27,91 +26,98 @@ But defining correct values is difficult:
 
 ---
 
-# 📌 3. Vertical Pod Autoscaler (VPA)
+## 📌 3. Vertical Pod Autoscaler (VPA)
 
-## 🔹 What Problem VPA Solves
-
+### 🔹 What Problem VPA Solves
 👉 "How much CPU/Memory does my app actually need?"
 
 ---
 
-## 🔹 Core Idea
+### 🔹 Core Idea
 
-
+```
 Observe → Recommend → Apply
-
+```
 
 ---
 
-## 🔹 Installation
+### 🔹 Installation
 
 ```bash
 kubectl apply -f https://github.com/kubernetes/autoscaler/releases/latest/download/vertical-pod-autoscaler.yaml
-🔹 Components (Very Important)
-1. Recommender (Brain)
+```
 
-Reads data from:
+---
 
-Metrics Server
+### 🔹 Components (Very Important)
 
-Historical usage
+#### 1. Recommender (Brain)
 
-Calculates:
+- Reads data from:
+  - Metrics Server
+  - Historical usage
+- Calculates:
+  - Ideal CPU
+  - Ideal Memory
 
-Ideal CPU
-
-Ideal Memory
-
-Output Example:
-
+**Output Example:**
+```
 Recommended CPU: 500m (current: 200m)
+```
 
 ❗ Does NOT modify Pods
 
-2. Updater (Executor)
+---
 
-Compares running Pods with recommendations
+#### 2. Updater (Executor)
 
-If mismatch:
+- Compares running Pods with recommendations
+- If mismatch → Evicts the Pod
 
-Evicts the Pod
-
-Why eviction?
-
+**Why eviction?**  
 Kubernetes cannot change CPU/Memory of a running Pod
 
-3. Admission Controller (Mutator)
+---
 
-Works during Pod creation
+#### 3. Admission Controller (Mutator)
 
-Modifies Pod spec before it starts
+- Works during Pod creation
+- Modifies Pod spec before it starts
 
-Example:
-
+**Example:**
+```
 User request: 200m CPU
 VPA recommendation: 500m CPU
 Final Pod: 500m CPU
-🔹 End-to-End Flow
+```
 
-Pod starts with initial resources
+---
 
-Recommender analyzes usage
+### 🔹 End-to-End Flow
 
-Recommendation is generated
+1. Pod starts with initial resources  
+2. Recommender analyzes usage  
+3. Recommendation is generated  
+4. Updater evicts Pod (if needed)  
+5. New Pod is created  
+6. Admission Controller injects updated values  
 
-Updater evicts Pod (if needed)
+---
 
-New Pod is created
+### 🔹 VPA Modes
 
-Admission Controller injects updated values
+| Mode | Behavior |
+|------|--------|
+| Off | Only recommendation |
+| Initial | Apply only at creation |
+| Recreate | Kill & recreate Pod |
+| Auto | Automatically decide |
 
-🔹 VPA Modes
-Mode	Behavior
-Off	Only recommendation
-Initial	Apply only at creation
-Recreate	Kill & recreate Pod
-Auto	Automatically decide
-🔹 Example (VPA YAML)
+---
+
+### 🔹 Example (VPA YAML)
+
+```yaml
 apiVersion: autoscaling.k8s.io/v1
 kind: VerticalPodAutoscaler
 metadata:
@@ -123,42 +129,62 @@ spec:
     name: nginx
   updatePolicy:
     updateMode: "Auto"
-🔹 When to Use VPA
+```
+
+---
+
+### 🔹 When to Use VPA
 
 ✅ Suitable for:
-
-Databases
-
-ML workloads
-
-Stateful applications
+- Databases
+- ML workloads
+- Stateful applications
 
 ❌ Avoid for:
+- Stateless high-availability apps (due to restarts)
 
-Stateless high-availability apps (due to restarts)
+---
 
-⚠️ Limitation
+### ⚠️ Limitation
 
-Requires Pod restart
+- Requires **Pod restart**
 
-📌 4. Horizontal Pod Autoscaler (HPA)
-🔹 What Problem HPA Solves
+---
 
+## 📌 4. Horizontal Pod Autoscaler (HPA)
+
+### 🔹 What Problem HPA Solves
 👉 "My traffic is increasing, I need more Pods"
 
-🔹 Working Principle
+---
+
+### 🔹 Working Principle
+
+```
 Increase load → Increase CPU → Add Pods
-🔹 Flow
+```
 
-Metrics Server collects CPU usage
+---
 
-HPA compares with target
+### 🔹 Flow
 
-Adjusts replica count
+1. Metrics Server collects CPU usage  
+2. HPA compares with target  
+3. Adjusts replica count  
 
-🔹 Example (Imperative)
+---
+
+### 🔹 Example (Imperative)
+
+```bash
 kubectl autoscale deployment nginx --cpu-percent=50 --min=1 --max=5
-🔹 Example (YAML)
+```
+
+---
+
+### 🔹 Example (YAML)
+
+```yaml
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -177,76 +203,108 @@ spec:
       target:
         type: Utilization
         averageUtilization: 50
-🔹 When to Use HPA
+```
+
+---
+
+### 🔹 When to Use HPA
 
 ✅ Best for:
+- Web applications
+- APIs
+- Microservices
 
-Web applications
+---
 
-APIs
+## ⚖️ 5. VPA vs HPA
 
-Microservices
+| Feature | VPA | HPA |
+|--------|-----|-----|
+| Scaling | CPU/Memory | Pods |
+| Restart Required | Yes | No |
+| Best For | Stateful | Stateless |
 
-⚖️ 5. VPA vs HPA
-Feature	VPA	HPA
-Scaling	CPU/Memory	Pods
-Restart Required	Yes	No
-Best For	Stateful	Stateless
-⚠️ 6. VPA + HPA Conflict
-🔹 Problem
+---
+
+## ⚠️ 6. VPA + HPA Conflict
+
+### 🔹 Problem
 
 HPA uses:
-
+```
 CPU Usage / CPU Request
+```
 
-VPA changes CPU request → breaks HPA logic
+VPA changes CPU request → breaks HPA calculation
 
-❌ Bad Combination
+---
 
-HPA (CPU-based)
+### ❌ Bad Combination
+- HPA (CPU-based)
+- VPA (CPU updates)
 
-VPA (CPU updates)
+---
 
-✅ Safe Combination
+### ✅ Safe Combination
+- HPA → Custom metrics (QPS, RPS)
+- VPA → CPU/Memory tuning
 
-HPA → Custom metrics (QPS, RPS)
+---
 
-VPA → CPU/Memory tuning
+## 📌 7. In-Place Pod Resize
 
-📌 7. In-Place Pod Resize
-🔹 Problem
+### 🔹 Problem
 
 Why does VPA restart Pods?
 
+```
 Kubernetes cannot modify resources of running Pods
-🔹 Solution
+```
+
+---
+
+### 🔹 Solution
 
 👉 In-Place Pod Resize allows:
 
+```
 Update CPU/Memory without restarting Pod
-🔹 Benefits
+```
 
-No downtime
+---
 
-No eviction
+### 🔹 Benefits
 
-Faster scaling
+- No downtime  
+- No eviction  
+- Faster scaling  
 
-🔹 Example
+---
+
+### 🔹 Example
+
+```yaml
 resources:
   requests:
     cpu: "500m"
   limits:
     cpu: "1"
+```
 
 👉 These values can be updated dynamically
 
-🔹 Future
+---
+
+### 🔹 Future
+
+```
 VPA + In-Place Resize = No Restart Scaling
-🎯 8. Final Mental Model
+```
 
-HPA → Add more Pods
+---
 
-VPA → Increase Pod resources
+## 🎯 8. Final Mental Model
 
-In-place resize → Update without restart
+- HPA → Add more Pods  
+- VPA → Increase Pod resources  
+- In-place resize → Update without restart  
