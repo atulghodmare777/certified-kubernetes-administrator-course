@@ -38,7 +38,7 @@
   ```
   ![kube1](../../images/kube1.png)
   
-- Upgrade kubeadm from v1.11 to v1.12
+- Upgrade kubeadm from v1.11 to v1.12 [ We need to upgrade first kubeadm and then upgrade the master each time for each minor version, kubeadm follow k8s version patter ]
   ```
   $ apt-get upgrade -y kubeadm=1.12.0-00
   ```
