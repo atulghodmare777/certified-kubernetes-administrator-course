@@ -41,6 +41,18 @@ pod/blue-759779556-w6qcm evicted
 node/node01 drained
 
 ```
+## What will happen to pod who do not have a controller if try to drain
+```
+We get following error if pod is not controlled by controller
+kubectl drain node01 --ignore-daemonsets
+node/node01 cordoned
+error: unable to drain node "node01" due to error: cannot delete cannot delete Pods that declare no controller (use --force to override): default/hr-app, continuing command...
+There are pending nodes to be drained:
+ node01
+cannot delete cannot delete Pods that declare no controller (use --force to override): default/hr-app
+```
+It wont delete the pod as pod do not have replica set or deployment
+If still want to drain it then we need to use --force but then pod will be lost foreever
   
 #### K8s Reference Docs
 - https://kubernetes.io/docs/tasks/administer-cluster/safely-drain-node/
