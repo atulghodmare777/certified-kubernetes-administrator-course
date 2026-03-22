@@ -30,6 +30,8 @@
   ![stg3](../../images/stg3.PNG)
   
 ## kubeadm - Upgrade master node
+- When the master is down during upgrade doesnt mean cluster goes down the traffic is served by the worker nodes only accessing the cluster and cluster
+  management such as deploying the app and controller also wont work as master is down during brief period of time.
 - kubeadm has an upgrade command that helps in upgrading clusters.
   ```
   $ kubeadm upgrade plan
