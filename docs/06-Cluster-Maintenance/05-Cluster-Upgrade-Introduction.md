@@ -32,50 +32,15 @@
 ## kubeadm - Upgrade master node
 - When the master is down during upgrade doesnt mean cluster goes down the traffic is served by the worker nodes only accessing the cluster and cluster
   management such as deploying the app and controller also wont work as master is down during brief period of time.
-- kubeadm has an upgrade command that helps in upgrading clusters.
-  ```
-  $ kubeadm upgrade plan
-  ```
-  ![kube1](../../images/kube1.png)
-  
-- Upgrade kubeadm from v1.11 to v1.12 [ We need to upgrade first kubeadm and then upgrade the master each time for each minor version, kubeadm follow k8s version patter ]
-  ```
-  $ apt-get upgrade -y kubeadm=1.12.0-00
-  ```
-- Upgrade the cluster
-  ```
-  $ kubeadm upgrade apply v1.12.0
-  ```
-- If you run the 'kubectl get nodes' command, you will see the older version. This is because in the output of the command it is showing the versions of kubelets on each of these nodes registered with the API Server and not the version of API Server itself  
-  ```
-  $ kubectl get nodes
-  ```
-  
-  ![kubeu](../../images/kubeu.PNG)
-  
-- Upgrade 'kubelet' on the master node
-  ```
-  $ apt-get upgrade kubelet=1.12.0-00
-  ```
-- Restart the kubelet
-  ```
-  $ systemctl restart kubelet
-  ```
-- Run 'kubectl get nodes' to verify
-  ```
-  $ kubectl get nodes
-  ```
-  
-  ![kubeu1](../../images/kubeu1.PNG)
-
-  Follow following steps for master upgrade:
+Follow following steps for master upgrade:
   - This will give latest version available for upgrade
   ```
   kubeadm upgrade plan
   ```
   we will get current version exa: 1.33.0 , kubeadm version: 1.33.0, target version: 1.33.10
   
-  suppose we want to upgrade to 1.43.0
+  suppose we want to upgrade to 1.34.0
+  - Upgrade kubeadm from v1.33 to v1.34 [ We need to upgrade first kubeadm and then upgrade the master each time for each minor version, kubeadm follow k8s version patter ]
   - Drain master node
   ```
   kubectl drain controlplane --ignore-daemonsets
@@ -126,7 +91,7 @@
 
   [upgrade/kubelet] Now that your control plane is upgraded, please proceed with upgrading your kubelets if you haven't already done so.
 
-  - Even after upgrade you will see older version as it is showing kubelet version
+  - Even after upgrade you will see older version as it is showing kubelet version: If you run the 'kubectl get nodes' command, you will see the older version. This is because in the output of the command it is showing the versions of kubelets on each of these nodes registered with the API Server and not the version of API Server itself  
   ```
   k get nodes
   output:
@@ -160,6 +125,11 @@
   ```
   sudo kubeadm upgrade node instead of sudo kubeadm upgrade apply
   ```
+  ![kube1](../../images/kube1.png)
+  
+  ![kubeu](../../images/kubeu.PNG)
+  
+  ![kubeu1](../../images/kubeu1.PNG)
   
   
 ## kubeadm - Upgrade worker nodes
