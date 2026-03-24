@@ -67,24 +67,135 @@
   ```
   
   ![kubeu1](../../images/kubeu1.PNG)
- 
+
+  Follow following steps for master upgrade:
+  - This will give latest version available for upgrade
+  ```
+  kubeadm upgrade plan
+  ```
+  we will get current version exa: 1.33.0 , kubeadm version: 1.33.0, target version: 1.33.10
+  
+  suppose we want to upgrade to 1.43.0
+  - Drain master node
+  ```
+  kubectl drain controlplane --ignore-daemonsets
+  ```
+  - Upgrade first kubeadm, first find out what package repo it is using
+  ```
+  pager /etc/apt/sources.list.d/kubernetes.list
+  output: deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.33/deb/ /
+  ```
+  - provide required version which we want to switch to
+  ```
+  vi /etc/apt/sources.list.d/kubernetes.list
+  add 1.34
+  output: deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.34/deb/ /
+  ```
+  - Now we should see our version on which we want to upgrade to
+  ```
+  sudo apt update
+  sudo apt-cache madison kubeadm
+  Exa oputput:
+   kubeadm | 1.34.6-1.1 | https://pkgs.k8s.io/core:/stable:/v1.34/deb  Packages
+   kubeadm | 1.34.5-1.1 | https://pkgs.k8s.io/core:/stable:/v1.34/deb  Packages
+   kubeadm | 1.34.4-1.1 | https://pkgs.k8s.io/core:/stable:/v1.34/deb  Packages
+   kubeadm | 1.34.3-1.1 | https://pkgs.k8s.io/core:/stable:/v1.34/deb  Packages
+   kubeadm | 1.34.2-1.1 | https://pkgs.k8s.io/core:/stable:/v1.34/deb  Packages
+   kubeadm | 1.34.1-1.1 | https://pkgs.k8s.io/core:/stable:/v1.34/deb  Packages
+   kubeadm | 1.34.0-1.1 | https://pkgs.k8s.io/core:/stable:/v1.34/deb  Packages
+  
+  ```
+  - Upgrade kubeadm: Modify version accordingly
+  ```
+  sudo apt-mark unhold kubeadm && \
+  sudo apt-get update && sudo apt-get install -y kubeadm='1.34.0-*' && \
+  sudo apt-mark hold kubeadm
+  # Then check kubeadm version
+  kubeadm version
+  ```
+  - Now Verify the upgrade plan: This command checks that your cluster can be upgraded, and fetches the versions you can upgrade to. It also shows a table with        the component config version states.
+  ```
+  sudo kubeadm upgrade plan
+  ```
+  - Choose a version to upgrade to, and run the appropriate command. For example:
+  ```
+  sudo kubeadm upgrade apply v1.34.0
+  ```
+  Once the command finishes you should see:
+  [upgrade/successful] SUCCESS! Your cluster was upgraded to "v1.34.x". Enjoy!
+
+  [upgrade/kubelet] Now that your control plane is upgraded, please proceed with upgrading your kubelets if you haven't already done so.
+
+  - Even after upgrade you will see older version as it is showing kubelet version
+  ```
+  k get nodes
+  output:
+  controlplane ~ ➜  k get nodes
+  NAME           STATUS                     ROLES           AGE   VERSION
+  controlplane   Ready,SchedulingDisabled   control-plane   64m   v1.33.0
+  node01         Ready                      <none>          64m   v1.33.0
+  ```
+  - Upgrade the kubectl and kubelet
+  ```
+  sudo apt-mark unhold kubelet kubectl && \
+  sudo apt-get update && sudo apt-get install -y kubelet='1.34.0-*' kubectl='1.34.0-*' && \
+  sudo apt-mark hold kubelet kubectl
+  ```
+  - Now restart the service
+  ```
+  sudo systemctl daemon-reload
+  sudo systemctl restart kubelet
+
+  k uncordon controlplane
+  ```
+  - Now the master node upgrade is successful
+  ```
+  controlplane ~ ➜  k get nodes
+  NAME           STATUS   ROLES           AGE   VERSION
+  controlplane   Ready    control-plane   68m   v1.34.0
+  node01         Ready    <none>          68m   v1.33.0
+  ```
+  
+  - For the other control plane nodes : Same as the first control plane node but use:
+  ```
+  sudo kubeadm upgrade node instead of sudo kubeadm upgrade apply
+  ```
+  
+  
 ## kubeadm - Upgrade worker nodes
   
 - From master node, run 'kubectl drain' command to move the workloads to other nodes
   ```
-  $ kubectl drain node-1
+  $ kubectl drain node-1 --ignore-daemonsets
   ```
-- Upgrade kubeadm and kubelet packages
+- SSH into node
   ```
-  $ apt-get upgrade -y kubeadm=1.12.0-00
-  $ apt-get upgrade -y kubelet=1.12.0-00
+  ssh node01
   ```
-- Update the node configuration for the new kubelet version
+- Use any text editor you prefer to open the file that defines the Kubernetes apt repository.
   ```
-  $ kubeadm upgrade node config --kubelet-version v1.12.0
+  vi /etc/apt/sources.list.d/kubernetes.list
+  # Update the version in the URL to the next available minor release, i.e v1.34.
+  deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.34/deb/ /
   ```
-- Restart the kubelet service
+- Check if required version is available
   ```
+  apt update
+  apt-cache madison kubeadm
+  ```
+- Based on the version information displayed by apt-cache madison, it indicates that for Kubernetes version 1.34.0, the available package version is 1.34.0-1.1.     Therefore, to install kubeadm for Kubernetes v1.34.0, use the following command:
+  ```
+  $ apt-get install kubeadm=1.34.0-1.1
+  # Upgrade the node  
+    kubeadm upgrade node
+  ```
+- Now, upgrade the Kubelet version.
+  ```
+  apt-get install kubelet=1.34.0-1.1
+  ```
+- Restart the kubelet service :Run the following commands to refresh the systemd configuration and apply changes to the Kubelet service
+  ```
+  $ systemctl daemon-reload
   $ systemctl restart kubelet
   ```
 - Mark the node back to schedulable
