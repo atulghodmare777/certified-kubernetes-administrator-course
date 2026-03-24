@@ -83,7 +83,7 @@ In this section, we will take a look at backup and restore methods
   ```
   $ service kube-apiserver start
   ```
-#### With all etcdctl commands specify the cert,key,cacert and endpoint for authentication.
+#### With all etcdctl commands running above specify the cert,key,cacert and endpoint for authentication as below then only it will work.
 ```
 $ ETCDCTL_API=3 etcdctl \
   snapshot save /tmp/snapshot.db \
