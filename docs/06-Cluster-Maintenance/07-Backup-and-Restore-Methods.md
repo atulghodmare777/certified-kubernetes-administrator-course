@@ -1,6 +1,3 @@
-<img width="1914" height="817" alt="image" src="https://github.com/user-attachments/assets/65ac5c6e-5f3a-451b-9c4b-062d20bca9d5" /># Backup and Restore Methods
-  - Take me to [Video Tutorial](https://kodekloud.com/topic/backup-and-restore-methods/)
-  
 In this section, we will take a look at backup and restore methods
 
 ## Backup Candidates
