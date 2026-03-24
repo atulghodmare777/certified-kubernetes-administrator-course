@@ -1,4 +1,4 @@
-# Backup and Restore Methods
+<img width="1914" height="817" alt="image" src="https://github.com/user-attachments/assets/65ac5c6e-5f3a-451b-9c4b-062d20bca9d5" /># Backup and Restore Methods
   - Take me to [Video Tutorial](https://kodekloud.com/topic/backup-and-restore-methods/)
   
 In this section, we will take a look at backup and restore methods
@@ -60,6 +60,9 @@ In this section, we will take a look at backup and restore methods
 - To restore etcd from the backup at later in time. First stop kube-apiserver service
   ```
   $ service kube-apiserver stop
+  or
+  $ mv /etc/kubernetes/manifests/kube-apiserver.yaml /tmp/
+    sleep 30
   ```
 - Run the etcdctl snapshot restore command
   ```
@@ -67,22 +70,76 @@ In this section, we will take a look at backup and restore methods
   ```
   It will create a new directory /var/lib/etcd-from-backup
 - Update the etcd service: Update the new directory in the service
+  ```
+  vi /etc/kubernetes/manifests/etcd.yaml
+  Modify the volumes section as follows:
+  From:
+
+  volumes:
+  - hostPath:
+      path: /etc/kubernetes/pki/etcd
+      type: DirectoryOrCreate
+    name: etcd-certs
+  - hostPath:
+      path: /var/lib/etcd                    # OLD directory
+      type: DirectoryOrCreate
+    name: etcd-data
+  To:
+
+  volumes:
+  - hostPath:
+      path: /etc/kubernetes/pki/etcd
+      type: DirectoryOrCreate
+    name: etcd-certs
+  - hostPath:
+      path: /var/lib/etcd-from-backup        # NEW restored directory
+      type: DirectoryOrCreate
+    name: etcd-data
+  ```
+  - Upon saving this file, the etcd pod will restart automatically due to static pod behavior.
   
-- Reload system configs
+- Restart kubeapi server
   ```
-  $ systemctl daemon-reload
+  mv /tmp/kube-apiserver.yaml /etc/kubernetes/manifests/
   ```
-- Restart etcd
-  ```
-  $ service etcd restart
-  ```
+  Wait for 60 seconds to allow the kube-apiserver to start.
+  
+ - Restart other control plane components
+   ```
+   # Restart kube-controller-manager
+   mv /etc/kubernetes/manifests/kube-controller-manager.yaml /tmp/
+   sleep 20
+   mv /tmp/kube-controller-manager.yaml /etc/kubernetes/manifests/
+
+   # Restart kube-scheduler
+   mv /etc/kubernetes/manifests/kube-scheduler.yaml /tmp/
+   sleep 20
+   mv /tmp/kube-scheduler.yaml /etc/kubernetes/manifests/
+
+   # Restart kubelet
+   systemctl restart kubelet
   
   ![er](../../images/er.PNG)
-  
-- Start the kube-apiserver
+
+- Monitor the restart process
   ```
-  $ service kube-apiserver start
+  watch crictl ps
   ```
+  Key indicators to observe:
+  All components should show STATUS = Running
+  The entire process should take approximately 2-3 minutes.
+
+-Verify the restore
+```
+# Check all resources across all namespaces
+kubectl get deployments,services --all-namespaces
+
+# Verify specific resources if needed
+kubectl get pods --all-namespaces
+kubectl get nodes
+```
+You should now observe all the resources that existed at the time the snapshot was taken.
+
 #### With all etcdctl commands running above specify the cert,key,cacert and endpoint for authentication as below then only it will work.
 ```
 $ ETCDCTL_API=3 etcdctl \
