@@ -29,6 +29,7 @@ In this section, we will take a look at kubeconfig in kubernetes
   $ kubectl config view
   ```
 - You can specify the kubeconfig file with kubectl config view with "--kubeconfig" flag
+  
   ```
   $ kubectl config veiw --kubeconfig=my-custom-config
   ```
@@ -40,6 +41,10 @@ In this section, we will take a look at kubeconfig in kubernetes
   $ kubectl config use-context <context-name>
   ex: 
   $ kubectl config use-context prod-user@production
+  ```
+- suppose want to use different/custom kubeconfig file then need to provide extra argument
+  ```
+  $ kubectl config  --kubeconfig=path_where_kubeconfig_file_exist use-context <context-name>
   ```
   
   ![kc7](../../images/kc7.PNG)
