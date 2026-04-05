@@ -46,6 +46,20 @@ In this section, we will take a look at kubeconfig in kubernetes
   ```
   $ kubectl config  --kubeconfig=path_where_kubeconfig_file_exist use-context <context-name>
   ```
+- Suppose i dont want always to write whole kubeconfig path while using the context command, then what to do
+  ```
+  First vi ~/.bashrc
+  add one of lines >
+  export KUBECONFIG=/root/my-kube-config
+  # OR
+  export KUBECONFIG=~/my-kube-config
+  # OR
+  export KUBECONFIG=$HOME/my-kube-config
+  
+  Apply the Changes:
+  Reload the shell configuration to apply the changes in the current session:
+  run next command > source ~/.bashrc
+  ```
   
   ![kc7](../../images/kc7.PNG)
   
