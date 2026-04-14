@@ -123,6 +123,7 @@ acceptable to you. for that
  
 #### K8s Reference Docs
 - https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/
+- https://kubernetes.io/docs/concepts/storage/projected-volumes/#serviceaccounttoken
  
   
   
