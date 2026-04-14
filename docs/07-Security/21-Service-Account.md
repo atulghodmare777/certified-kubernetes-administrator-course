@@ -13,6 +13,16 @@ Kubernetes operates with two main types of users:
 
 Service accounts are primarily used to authenticate these bots or applications to the Kubernetes API server.
 
+- SA used by other applications or services to interact with k8s
+- Tokens are created for SA to prove identity
+- Every namespace has default SA
+- The default SA is automatically attached to the pod on creation.
+- To attach SA to a pod use serviceAccountName field
+- When SA attached to a pod, k8s:
+   - Automatically create a token and mounts as a projected volume
+   - Automatically rotates token
+   - Automatically expires a token when pod is deleted
+
 ### Service Account Creation
 
 ![alt text](../../images/sa.png)
@@ -52,7 +62,8 @@ to opt out of  serviceaccount automounting
 spec:
   automountServiceAccountToken: false
 ```
- 
+- we can add the automountServiceAccountToken: false in service account as well as inside the specific pod as well if want pod specific
+- If this automountServiceAccountToken: false property not set at SA level then we can put in pod level if it is required.
 
 
 ### Enhanced Security Features (Kubernetes v1.22+)
@@ -82,8 +93,16 @@ Since v1.22, this type of Secret is no longer used to mount credentials into Pod
 In Kubernetes v1.24, KEP-2799 introduced the reduction of automatically created token secrets for service accounts. You must now manually create service account token secrets using the kubectl create token command.
 
 ```bash
- kubectl create token <serviceaccount>
+ kubectl create token <serviceaccount> --duration 2h ( default duration is 1hr here we have modified the default duration)
 ```
+- Now we can use the token to provide in the application token field exa: k8s dashboard
+
+- If want to decode the token then we can do that as follows:
+```
+jq -R 'split(".") | select(length > 0) | .[0],.[1] | @base64d | fromjson' <<< <token>
+```
+- The output will show the expiry and SA name and  other details
+  
 
 ![alt text](../../images/sa4.png)
 
@@ -94,6 +113,8 @@ acceptable to you. for that
 - Create a service account.
 - Create a secret for the service account.
 - In secret add an annotation `kubernetes.io/service-account.name: <serviceaccountname>` .
+
+### 
 
  
 
