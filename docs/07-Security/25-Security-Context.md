@@ -48,7 +48,7 @@ $ docker run --privilaged ubuntu
  ![ksec](../../images/ksec.PNG)
 
 ## Security Context
-- To add security context on the container add a field called **`securityContext`** under the spec section.
+- To add security context on the pod add a field called **`securityContext`** under the spec section.
   ```
   apiVersion: v1
   kind: Pod
