@@ -120,6 +120,91 @@ acceptable to you. for that
 
 ![alt text](../../images/sa5.png)
 
+### Task: Modify the existing ServiceAccount dashboard-sa in the default namespace to disable automatic mounting of API credentials.
+
+    Then, modify the existing web-dashboard Deployment to inject (mount) a ServiceAccount token at:
+
+    /var/run/secrets/kubernetes.io/serviceaccount/token
+
+    Use a projected volume named token to inject the ServiceAccount token, and ensure it is mounted read-only.
+    PS: The Deployment manifest file can be found at: ~/web-dashboard/deployment.yaml
+    
+- Solution:
+This task has two parts: disabling automatic token mounting on the ServiceAccount, and configuring a projected volume on the Deployment.
+
+Part 1: Disable automountServiceAccountToken on the ServiceAccount
+
+```
+kubectl edit sa dashboard-sa
+```
+
+Add automountServiceAccountToken: false at the top level:
+
+```
+apiVersion: v1
+automountServiceAccountToken: false
+kind: ServiceAccount
+metadata:
+  name: dashboard-sa
+  namespace: default
+```
+
+Alternatively, use kubectl patch:
+```
+kubectl patch sa dashboard-sa -p '{"automountServiceAccountToken": false}'
+```
+
+Part 2: Configure projected volume on the Deployment
+
+-Add the following changes to spec.template.spec:
+
+  - automountServiceAccountToken: false to disable default token mounting
+  - A projected volume named token with a serviceAccountToken source
+  - A volumeMount in the container to mount the token at /var/run/secrets/kubernetes.io/serviceaccount/ with readOnly: true
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-dashboard
+  namespace: default
+  labels:
+    name: web-dashboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: web-dashboard
+  template:
+    metadata:
+      labels:
+        name: web-dashboard
+    spec:
+      containers:
+      - name: web-dashboard
+        image: gcr.io/kodekloud/customimage/my-kubernetes-dashboard
+        ports:
+        - containerPort: 8080
+        env:
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        volumeMounts:
+        - mountPath: /var/run/secrets/kubernetes.io/serviceaccount/
+          name: token
+          readOnly: true
+      serviceAccountName: dashboard-sa
+      automountServiceAccountToken: false
+      volumes:
+      - name: token
+        projected:
+          sources:
+          - serviceAccountToken:
+              path: token
+```
+- Apply the manifest
+- Verify the pod is running:
+
+
+
  
 #### K8s Reference Docs
 - https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/
