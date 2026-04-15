@@ -98,6 +98,38 @@ $ docker run --privilaged ubuntu
           add: ["MAC_ADMIN"]
   ```
   ![cap](../../images/cap.PNG)
+
+  ### Multiple context present in the pod
+  - If multiple security context present in the pod exa:
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: multi-pod
+spec:
+  securityContext:
+    runAsUser: 1001
+  containers:
+  -  image: ubuntu
+     name: web
+     command: ["sleep", "5000"]
+     securityContext:
+      runAsUser: 1002
+
+  -  image: ubuntu
+     name: sidecar
+     command: ["sleep", "5000"]
+```
+- In this web container will run with 1002 user & sidecar container will run at 1001 user as container level user will take precedence
+- If want to provide user as root then we have to add zero(0) as its value then it will take it as root user
+- If want to add the capabilities then we have to add at the container level only as at pod level it is not supported
+  
+```
+securityContext:
+  runAsUser: 0
+  capabilities:
+     add: ["SYS_TIME", "NET_ADMIN"]
+```
   
   
 ### K8s Reference Docs
