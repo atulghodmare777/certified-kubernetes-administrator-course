@@ -55,9 +55,85 @@
         port: 3306
   ```
   
+  - With only pod selector any pod with label as mentioned above can access the db it can be from any namespace, how to restrict that?
+  - This will taken care by namespaceSelector block as shown in below example
+  - Suppose outside server which is not in k8s environment want to access the db then that is possible by ipBlock block as mentioned in below example
+    
+```
+apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+   name: db-policy
+  spec:
+    podSelector:
+      matchLabels:
+        role: db
+    policyTypes:
+    - Ingress
+    ingress:
+    - from:
+      - podSelector:
+          matchLabels:
+            role: api-pod
+        namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: prod
+      - ipBlock:
+            cidr: 192.168.5.10/32     
+      ports:
+      - protocol: TCP
+        port: 3306
+
+```
+
   ```
   $ kubectl create -f policy-definition.yaml
   ```
+- In above example podSelector and namespaceSelector acts as a "AND" condition means only when both meets it will allow, means in our case pod with
+  label role: api-pod from prod namespace only will able to access the db pod
+- In above example podSelector and ipBlock acts as a "OR" condition means any of the 2 can access the db pod
+- Suppose id we create namespaceSelector with saperate block as below then any pod within the cluster can access the db pod as it is "OR" condition
+```
+- from:
+  - podSelector:
+      matchLabels:
+         role: api-pod
+  - namespaceSelector:
+      matchLabels:
+         kubernetes.io/metadata.name: prod
+```
+
+## Egress rule:
+- Suppose we have a backup server where need to perform backup action from db pod then we can define egress rule
+- Note by default when we create a ingress rule we do not have to add egress rule but in this condition we require dedicated egress rul.
+
+```
+  apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+   name: db-policy
+  spec:
+    podSelector:
+      matchLabels:
+        role: db
+    policyTypes:
+    - Ingress
+    - Egress
+    ingress:
+    - from:
+      - podSelector:
+          matchLabels:
+            role: api-pod
+      ports:
+      - protocol: TCP
+        port: 3306
+     egress:
+     - to:
+       - ipBlock: 192.168.5.10/32   # It can be anything like podSelector & namespaceSelector as well as per requirement
+       ports:
+       - protocol: TCP
+         port: 80
+  ```  
   
  ![npol3](../../images/npol3.PNG)
  
