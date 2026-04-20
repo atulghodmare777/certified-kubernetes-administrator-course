@@ -91,7 +91,7 @@ In this section, we will take a look at docker **Storage driver and Filesystem**
   ```
 - You should be able to see all these volumes if you list the contents of the `/var/lib/docker` volumes directory. This is called **Volume mounting**.
 - What if we had our data already at another location?
-- Let's say we have some external storage on the Docker host at `/data` path and we would like to store database data on that volume and not in the default `/var/lib/docker` volumes directory. In that case, we would run a container using the command `docker run -v`. But in this case, we will provide the complete path to the directory we would like to mount. That is `/data/mysql` and so it will create a container and mount the directory to the container. This is called **Bind mounting**.
+- Let's say we have some external storage on the Docker host at `/data` path and we would like to store database data on that volume and not in the default `/var/lib/docker` volumes directory. In that case, we would run a container using the command `docker run -v /data/mysql:/var/lib/mysql mysql`. But in this case, we will provide the complete path to the directory we would like to mount. That is `/data/mysql` and so it will create a container and mount the directory to the container. This is called **Bind mounting**.
 - So there are two types of mounts, volume mount and bind mount.
   * Volume mount, mounts of volume from the volumes directory and bind mount, mounts indirectly from any location on the Docker host.
 - Instead of `-v` option, we can preferred `--mount` option.
