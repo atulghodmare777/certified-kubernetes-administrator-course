@@ -41,6 +41,7 @@ $ netstat -nltp
 
 ```
 ip link
+ip a
 ip addr
 ip addr add 192.168.1.10/24 dev eth0
 ip route
