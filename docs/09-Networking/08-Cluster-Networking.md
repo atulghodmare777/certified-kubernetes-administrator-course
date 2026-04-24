@@ -37,7 +37,19 @@ $ exec bash
 $ netstat -nltp
 ```
 
+## Important commands
 
+```
+ip link
+ip addr
+ip addr add 192.168.1.10/24 dev eth0
+ip route
+ip route add 192.168.1.0/24 via 192.168.2.1
+arp
+netstat -plnt
+route
+cat /proc/sys/net/ipv4/ip_forward > It should be 1 for external access
+```
 
 #### References Docs
 
