@@ -97,41 +97,22 @@ spec:
       kinds:
       - kind: HTTPRoute
 
-# Ingress vs Gateway API — YAML Side by Side
+# Ingress vs Gateway API
 
-| # | Ingress | Gateway API |
-|---|---------|-------------|
-| 1  | `apiVersion: networking.k8s.io/v1`                          | `apiVersion: gateway.networking.k8s.io/v1`    |
-| 2  | `kind: Ingress`                                             | `kind: Gateway`                               |
-| 3  | `metadata:`                                                 | `metadata:`                                   |
-| 4  | `  name: secure-app`                                        | `  name: secure-gateway`                      |
-| 5  | `  annotations:`                                            | ❌ _(no annotations needed)_                  |
-| 6  | `    nginx.ingress.kubernetes.io/ssl-redirect: "true"`      | ❌ _(no annotations needed)_                  |
-| 7  | `    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"`| ❌ _(no annotations needed)_                  |
-| 8  | `spec:`                                                     | `spec:`                                       |
-| 9  | ❌ _(no controller class concept)_                          | `  gatewayClassName: example-gc`              |
-| 10 | ❌ _(no listeners block)_                                   | `  listeners:`                                |
-| 11 | ❌ _(no listener name)_                                     | `  - name: https`                             |
-| 12 | ❌ _(no port defined)_                                      | `    port: 443`                               |
-| 13 | ❌ _(no protocol — SSL forced via annotation)_              | `    protocol: HTTPS`                         |
-| 14 | `  tls:`                                                    | `    tls:`                                    |
-| 15 | `  - hosts:`                                                | `      mode: Terminate`                       |
-| 16 | `      - secure.example.com`                                | `      certificateRefs:`                      |
-| 17 | `    secretName: tls-secret`                                | `      - kind: Secret`                        |
-| 18 | ❌ _(no cert kind concept)_                                 | `        name: tls-secret`                    |
-| 19 | ❌ _(no route control)_                                     | `    allowedRoutes:`                          |
-| 20 | ❌ _(no route control)_                                     | `      kinds:`                                |
-| 21 | ❌ _(no route control)_                                     | `      - kind: HTTPRoute`                     |
+| Ingress | Gateway API |
+|---------|-------------|
+| <pre>apiVersion: networking.k8s.io/v1<br>kind: Ingress<br>metadata:<br>  name: secure-app<br>  annotations:<br>    nginx.ingress.kubernetes.io/ssl-redirect: "true"<br>    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"<br>spec:<br>  tls:<br>  - hosts:<br>      - secure.example.com<br>    secretName: tls-secret</pre> | <pre>apiVersion: gateway.networking.k8s.io/v1<br>kind: Gateway<br>metadata:<br>  name: secure-gateway<br>spec:<br>  gatewayClassName: example-gc<br>  listeners:<br>  - name: https<br>    port: 443<br>    protocol: HTTPS<br>    tls:<br>      mode: Terminate<br>      certificateRefs:<br>      - kind: Secret<br>        name: tls-secret<br>    allowedRoutes:<br>      kinds:<br>      - kind: HTTPRoute</pre> |
 
 ---
 
-## What the ❌ rows tell you
+## Key Differences
 
-| Ingress gap | Impact | Gateway API fix |
-|---|---|---|
-| SSL redirect via annotation (rows 5–7) | Breaks if you switch from NGINX controller | `protocol: HTTPS` on listener — controller agnostic |
-| No controller class (row 9) | Can't target a specific implementation | `gatewayClassName` ties config to the right controller |
-| No listener block (rows 10–13) | Port and protocol buried or implicit | Explicit `listeners[]` with `port` + `protocol` per entry |
-| No TLS mode (row 15) | Termination behaviour assumed, not declared | `mode: Terminate` makes intent explicit |
-| No cert kind (row 18) | Only k8s Secrets supported | `kind: Secret` — extensible to external cert providers |
-| No route control (rows 19–21) | Any route type can bind to any ingress | `allowedRoutes.kinds` restricts to only `HTTPRoute` |
+| What | Ingress | Gateway API |
+|------|---------|-------------|
+| **SSL redirect** | Via annotations (NGINX only) | `protocol: HTTPS` — native |
+| **Port & protocol** | Not declared | Explicit `port: 443` + `protocol: HTTPS` |
+| **TLS mode** | Implicit | `mode: Terminate` — explicit |
+| **Certificate** | `secretName` only | `certificateRefs` — extensible |
+| **Route control** | None | `allowedRoutes.kinds: HTTPRoute` |
+| **Controller binding** | Implicit | `gatewayClassName` — explicit |
+| **Portability** | NGINX-specific annotations | Works on any Gateway controller |
