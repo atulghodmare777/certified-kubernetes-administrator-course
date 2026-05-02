@@ -137,60 +137,8 @@ spec:
       - name: api-service
         port: 80
 
-## CORS Configuration — Ingress vs Gateway API
+# CORS Configuration — Ingress vs Gateway API
 
 | NGINX Ingress | Traefik Ingress | Gateway API (HTTPRoute) |
-|--------------|----------------|--------------------------|
-| ```yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: cors-ingress
-  annotations:
-    nginx.ingress.kubernetes.io/enable-cors: "true"
-    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, PUT, POST"
-    nginx.ingress.kubernetes.io/cors-allow-origin: "https://allowed-origin.com"
-    nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
-``` | ```yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: traefik-ingress
-  annotations:
-    traefik.ingress.kubernetes.io/headers.customresponseheaders: |
-      Access-Control-Allow-Origin: '*'
-      Access-Control-Allow-Methods: GET,POST,PUT,DELETE,OPTIONS
-      Access-Control-Allow-Headers: Content-Type,Authorization
-      Access-Control-Allow-Credentials: true
-      Access-Control-Max-Age: 3600
-``` | ```yaml
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: cors-route
-spec:
-  parentRefs:
-  - name: my-gateway
-  rules:
-  - matches:
-    - path:
-        type: PathPrefix
-        value: /api
-    filters:
-    - type: ResponseHeaderModifier
-      responseHeaderModifier:
-        add:
-        - name: Access-Control-Allow-Origin
-          value: "*"
-        - name: Access-Control-Allow-Methods
-          value: "GET,POST,PUT,DELETE,OPTIONS"
-        - name: Access-Control-Allow-Headers
-          value: "Content-Type,Authorization"
-        - name: Access-Control-Allow-Credentials
-          value: "true"
-        - name: Access-Control-Max-Age
-          value: "3600"
-    backendRefs:
-    - name: api-service
-      port: 80
-``` |
+|---------------|----------------|--------------------------|
+| <pre>apiVersion: networking.k8s.io/v1<br>kind: Ingress<br>metadata:<br>  name: cors-ingress<br>  annotations:<br>    nginx.ingress.kubernetes.io/enable-cors: "true"<br>    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, PUT, POST"<br>    nginx.ingress.kubernetes.io/cors-allow-origin: "https://allowed-origin.com"<br>    nginx.ingress.kubernetes.io/cors-allow-credentials: "true"</pre> | <pre>apiVersion: networking.k8s.io/v1<br>kind: Ingress<br>metadata:<br>  name: traefik-ingress<br>  annotations:<br>    traefik.ingress.kubernetes.io/headers.customresponseheaders: &#124;<br>      Access-Control-Allow-Origin: '*'<br>      Access-Control-Allow-Methods: GET,POST,PUT,DELETE,OPTIONS<br>      Access-Control-Allow-Headers: Content-Type,Authorization<br>      Access-Control-Allow-Credentials: true<br>      Access-Control-Max-Age: 3600</pre> | <pre>apiVersion: gateway.networking.k8s.io/v1<br>kind: HTTPRoute<br>metadata:<br>  name: cors-route<br>spec:<br>  parentRefs:<br>  - name: my-gateway<br>  rules:<br>  - matches:<br>    - path:<br>        type: PathPrefix<br>        value: /api<br>    filters:<br>    - type: ResponseHeaderModifier<br>      responseHeaderModifier:<br>        add:<br>        - name: Access-Control-Allow-Origin<br>          value: "*"<br>        - name: Access-Control-Allow-Methods<br>          value: "GET,POST,PUT,DELETE,OPTIONS"<br>        - name: Access-Control-Allow-Headers<br>          value: "Content-Type,Authorization"<br>        - name: Access-Control-Allow-Credentials<br>          value: "true"<br>        - name: Access-Control-Max-Age<br>          value: "3600"<br>    backendRefs:<br>    - name: api-service<br>      port: 80</pre> |
