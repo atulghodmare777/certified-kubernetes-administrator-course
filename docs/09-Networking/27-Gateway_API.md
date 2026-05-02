@@ -88,3 +88,41 @@ spec:
 | Ingress (NGINX + Traefik) | Gateway API (HTTPRoute) |
 |---------------------------|--------------------------|
 | <pre># NGINX Ingress<br>apiVersion: networking.k8s.io/v1<br>kind: Ingress<br>metadata:<br>  name: cors-ingress<br>  annotations:<br>    nginx.ingress.kubernetes.io/enable-cors: "true"<br>    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, PUT, POST"<br>    nginx.ingress.kubernetes.io/cors-allow-origin: "https://allowed-origin.com"<br>    nginx.ingress.kubernetes.io/cors-allow-credentials: "true"<br><br># Traefik Ingress<br>apiVersion: networking.k8s.io/v1<br>kind: Ingress<br>metadata:<br>  name: traefik-ingress<br>  annotations:<br>    traefik.ingress.kubernetes.io/headers.customresponseheaders: &#124;<br>      Access-Control-Allow-Origin: '*'<br>      Access-Control-Allow-Methods: GET,POST,PUT,DELETE,OPTIONS<br>      Access-Control-Allow-Headers: Content-Type,Authorization<br>      Access-Control-Allow-Credentials: true<br>      Access-Control-Max-Age: 3600</pre> | <pre>apiVersion: gateway.networking.k8s.io/v1<br>kind: HTTPRoute<br>metadata:<br>  name: cors-route<br>spec:<br>  parentRefs:<br>  - name: my-gateway<br>  rules:<br>  - matches:<br>    - path:<br>        type: PathPrefix<br>        value: /api<br>    filters:<br>    - type: ResponseHeaderModifier<br>      responseHeaderModifier:<br>        add:<br>        - name: Access-Control-Allow-Origin<br>          value: "*"<br>        - name: Access-Control-Allow-Methods<br>          value: "GET,POST,PUT,DELETE,OPTIONS"<br>        - name: Access-Control-Allow-Headers<br>          value: "Content-Type,Authorization"<br>        - name: Access-Control-Allow-Credentials<br>          value: "true"<br>        - name: Access-Control-Max-Age<br>          value: "3600"<br>    backendRefs:<br>    - name: api-service<br>      port: 80</pre> |
+
+
+## gateway is already deployed in nginx-gateway namespace now deploy gatewayclass and httproute for a service
+```
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: nginx-gateway
+  namespace: nginx-gateway
+spec:
+  gatewayClassName: nginx
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: All
+```
+```
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: frontend-route
+spec:
+  parentRefs:
+  - name: nginx-gateway
+    namespace: nginx-gateway
+    sectionName: http
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: frontend-svc
+      port: 80
+```
