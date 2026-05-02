@@ -137,6 +137,8 @@ spec:
       - name: api-service
         port: 80
 
+## CORS Configuration — Ingress vs Gateway API
+
 | NGINX Ingress | Traefik Ingress | Gateway API (HTTPRoute) |
 |--------------|----------------|--------------------------|
 | ```yaml
@@ -155,7 +157,6 @@ kind: Ingress
 metadata:
   name: traefik-ingress
   annotations:
-    # CORS configuration
     traefik.ingress.kubernetes.io/headers.customresponseheaders: |
       Access-Control-Allow-Origin: '*'
       Access-Control-Allow-Methods: GET,POST,PUT,DELETE,OPTIONS
@@ -172,11 +173,10 @@ spec:
   - name: my-gateway
   rules:
   - matches:
-     - path:
-         type: PathPrefix
-         value: /api
+    - path:
+        type: PathPrefix
+        value: /api
     filters:
-    # CORS configuration using response header modification
     - type: ResponseHeaderModifier
       responseHeaderModifier:
         add:
