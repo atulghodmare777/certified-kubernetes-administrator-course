@@ -83,15 +83,114 @@ spec:
 
 ---
 
-## Overall Differences
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cors-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, PUT, POST"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "https://allowed-origin.com"
+    nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
 
-| What | Ingress | Gateway API |
-|------|---------|-------------|
-| **SSL enforce** | 2 NGINX annotations | `protocol: HTTPS` — 1 field |
-| **TLS mode** | Implicit | `mode: Terminate` — explicit |
-| **Certificate** | `secretName` only | `certificateRefs` — extensible |
-| **Canary setup** | 2 annotations + 2 separate Ingress objects | `weight` field in single `HTTPRoute` |
-| **Both backends** | Split across multiple files | One `backendRefs` block |
-| **Controller lock-in** | NGINX-specific annotations | Any Gateway-compliant controller |
-| **Portability** | Rewrite needed on controller change | Zero changes on controller swap |
-| **Config readability** | Intent hidden in annotations | Intent clear from typed fields |Sonnet 4.6Adaptive
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: traefik-ingress
+  annotations:
+    # CORS configuration
+    traefik.ingress.kubernetes.io/headers.customresponseheaders: |
+      Access-Control-Allow-Origin: '*'
+      Access-Control-Allow-Methods: GET,POST,PUT,DELETE,OPTIONS
+      Access-Control-Allow-Headers: Content-Type,Authorization
+      Access-Control-Allow-Credentials: true
+      Access-Control-Max-Age: 3600
+
+ apiVersion: gateway.networking.k8s.io/v1
+ kind: HTTPRoute
+ metadata:
+   name: cors-route
+spec:
+  parentRefs:
+  - name: my-gateway
+  rules:
+  - matches:
+     - path:
+         type: PathPrefix
+         value: /api
+     filters:
+     # CORS configuration using response header modification
+     - type: ResponseHeaderModifier
+       responseHeaderModifier:
+         add:
+         - name: Access-Control-Allow-Origin
+           value: "*"
+         - name: Access-Control-Allow-Methods
+           value: "GET,POST,PUT,DELETE,OPTIONS"
+         - name: Access-Control-Allow-Headers
+           value: "Content-Type,Authorization"
+         - name: Access-Control-Allow-Credentials
+           value: "true"
+         - name: Access-Control-Max-Age
+           value: "3600"
+      backendRefs:
+      - name: api-service
+        port: 80
+
+| NGINX Ingress | Traefik Ingress | Gateway API (HTTPRoute) |
+|--------------|----------------|--------------------------|
+| ```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cors-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, PUT, POST"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "https://allowed-origin.com"
+    nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
+``` | ```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: traefik-ingress
+  annotations:
+    # CORS configuration
+    traefik.ingress.kubernetes.io/headers.customresponseheaders: |
+      Access-Control-Allow-Origin: '*'
+      Access-Control-Allow-Methods: GET,POST,PUT,DELETE,OPTIONS
+      Access-Control-Allow-Headers: Content-Type,Authorization
+      Access-Control-Allow-Credentials: true
+      Access-Control-Max-Age: 3600
+``` | ```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: cors-route
+spec:
+  parentRefs:
+  - name: my-gateway
+  rules:
+  - matches:
+     - path:
+         type: PathPrefix
+         value: /api
+    filters:
+    # CORS configuration using response header modification
+    - type: ResponseHeaderModifier
+      responseHeaderModifier:
+        add:
+        - name: Access-Control-Allow-Origin
+          value: "*"
+        - name: Access-Control-Allow-Methods
+          value: "GET,POST,PUT,DELETE,OPTIONS"
+        - name: Access-Control-Allow-Headers
+          value: "Content-Type,Authorization"
+        - name: Access-Control-Allow-Credentials
+          value: "true"
+        - name: Access-Control-Max-Age
+          value: "3600"
+    backendRefs:
+    - name: api-service
+      port: 80
+``` |
