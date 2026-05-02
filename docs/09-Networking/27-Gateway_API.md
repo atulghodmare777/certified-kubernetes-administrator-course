@@ -75,14 +75,58 @@ spec:
 
 ---
 
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: canary-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/canary: "true"
+    nginx.ingress.kubernetes.io/canary-weight: "20"
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: app-v2
+            port:
+              number: 80
+
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: split-traffic
+spec:
+  parentRefs:
+  - name: app-gateway
+  rules:
+  - backendRefs:
+     - name: app-v1
+       port: 80
+       weight: 80
+     - name: app-v2
+       port: 80
+       weight: 20
+     
+
+# Canary Traffic Split — Ingress vs Gateway API
+
+| Ingress | Gateway API |
+|---------|-------------|
+| <pre>apiVersion: networking.k8s.io/v1<br>kind: Ingress<br>metadata:<br>  name: canary-ingress<br>  annotations:<br>    nginx.ingress.kubernetes.io/canary: "true"<br>    nginx.ingress.kubernetes.io/canary-weight: "20"<br>spec:<br>  rules:<br>  - http:<br>      paths:<br>      - path: /<br>        pathType: Prefix<br>        backend:<br>          service:<br>            name: app-v2<br>            port:<br>              number: 80</pre> | <pre>apiVersion: gateway.networking.k8s.io/v1<br>kind: HTTPRoute<br>metadata:<br>  name: split-traffic<br>spec:<br>  parentRefs:<br>  - name: app-gateway<br>  rules:<br>  - backendRefs:<br>     - name: app-v1<br>       port: 80<br>       weight: 80<br>     - name: app-v2<br>       port: 80<br>       weight: 20</pre> |
+
+---
+
 ## Key Differences
 
 | What | Ingress | Gateway API |
 |------|---------|-------------|
-| **SSL redirect** | Via annotations (NGINX only) | `protocol: HTTPS` — native |
-| **Port & protocol** | Not declared | Explicit `port: 443` + `protocol: HTTPS` |
-| **TLS mode** | Implicit | `mode: Terminate` — explicit |
-| **Certificate** | `secretName` only | `certificateRefs` — extensible |
-| **Route control** | None | `allowedRoutes.kinds: HTTPRoute` |
-| **Controller binding** | Implicit | `gatewayClassName` — explicit |
-| **Portability** | NGINX-specific annotations | Works on any Gateway controller |
+| **Kind** | `Ingress` | `HTTPRoute` |
+| **Canary setup** | Annotations — NGINX specific | Native `weight` field in `backendRefs` |
+| **v1 traffic** | Not defined — implicit 100% minus canary | Explicit `app-v1 weight: 80` |
+| **v2 traffic** | `canary-weight: "20"` via annotation | `app-v2 weight: 20` — typed field |
+| **Both backends together** | Need 2 separate Ingress objects | Single `HTTPRoute` with both backends |
+| **Portability** | Only works on NGINX controller | Works on any Gateway-compliant controller |
+| **Readability** | Split config across 2 files | All traffic rules in one place |
