@@ -74,43 +74,7 @@ spec:
 | <pre>apiVersion: networking.k8s.io/v1<br>kind: Ingress<br>metadata:<br>  name: secure-app<br>  annotations:<br>    nginx.ingress.kubernetes.io/ssl-redirect: "true"<br>    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"<br>spec:<br>  tls:<br>  - hosts:<br>      - secure.example.com<br>    secretName: tls-secret</pre> | <pre>apiVersion: gateway.networking.k8s.io/v1<br>kind: Gateway<br>metadata:<br>  name: secure-gateway<br>spec:<br>  gatewayClassName: example-gc<br>  listeners:<br>  - name: https<br>    port: 443<br>    protocol: HTTPS<br>    tls:<br>      mode: Terminate<br>      certificateRefs:<br>      - kind: Secret<br>        name: tls-secret<br>    allowedRoutes:<br>      kinds:<br>      - kind: HTTPRoute</pre> |
 
 ---
-
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: canary-ingress
-  annotations:
-    nginx.ingress.kubernetes.io/canary: "true"
-    nginx.ingress.kubernetes.io/canary-weight: "20"
-spec:
-  rules:
-  - http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: app-v2
-            port:
-              number: 80
-
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: split-traffic
-spec:
-  parentRefs:
-  - name: app-gateway
-  rules:
-  - backendRefs:
-     - name: app-v1
-       port: 80
-       weight: 80
-     - name: app-v2
-       port: 80
-       weight: 20
      
-
 # Canary Traffic Split — Ingress vs Gateway API
 
 | Ingress | Gateway API |
@@ -119,14 +83,15 @@ spec:
 
 ---
 
-## Key Differences
+## Overall Differences
 
 | What | Ingress | Gateway API |
 |------|---------|-------------|
-| **Kind** | `Ingress` | `HTTPRoute` |
-| **Canary setup** | Annotations — NGINX specific | Native `weight` field in `backendRefs` |
-| **v1 traffic** | Not defined — implicit 100% minus canary | Explicit `app-v1 weight: 80` |
-| **v2 traffic** | `canary-weight: "20"` via annotation | `app-v2 weight: 20` — typed field |
-| **Both backends together** | Need 2 separate Ingress objects | Single `HTTPRoute` with both backends |
-| **Portability** | Only works on NGINX controller | Works on any Gateway-compliant controller |
-| **Readability** | Split config across 2 files | All traffic rules in one place |
+| **SSL enforce** | 2 NGINX annotations | `protocol: HTTPS` — 1 field |
+| **TLS mode** | Implicit | `mode: Terminate` — explicit |
+| **Certificate** | `secretName` only | `certificateRefs` — extensible |
+| **Canary setup** | 2 annotations + 2 separate Ingress objects | `weight` field in single `HTTPRoute` |
+| **Both backends** | Split across multiple files | One `backendRefs` block |
+| **Controller lock-in** | NGINX-specific annotations | Any Gateway-compliant controller |
+| **Portability** | Rewrite needed on controller change | Zero changes on controller swap |
+| **Config readability** | Intent hidden in annotations | Intent clear from typed fields |Sonnet 4.6Adaptive
