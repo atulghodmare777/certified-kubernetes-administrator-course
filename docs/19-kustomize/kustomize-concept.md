@@ -1,570 +1,186 @@
-# Kustomize — Complete Notes for Beginners
+# Kustomize — Notes from Zero to Real Usage
 
-> **Prerequisites:** You should already know Kubernetes basics — Pods, Deployments, Services, ConfigMaps, Namespaces, and how to write YAML manifests. Kustomize builds on top of that knowledge.
+> **Who is this for?**
+> Anyone who already knows Kubernetes (Pods, Deployments, Services, ConfigMaps, Namespaces, YAML)
+> and is learning Kustomize for the first time.
+>
+> **How to read this:**
+> Go section by section in order. Each section builds on the previous one.
+> Do not skip ahead — concepts like patches and overlays will only make sense
+> after you understand the base structure.
 
 ---
 
 ## Table of Contents
-1. [What is Kustomize?](#1-what-is-kustomize)
-2. [Why Use Kustomize?](#2-why-use-kustomize)
-3. [Kustomize vs Helm](#3-kustomize-vs-helm)
-4. [Core Concepts](#4-core-concepts)
-5. [Kustomize File Structure](#5-kustomize-file-structure)
-6. [Key Functionalities](#6-key-functionalities)
-7. [Practical Examples](#7-practical-examples)
-8. [Real-World Multi-Environment Setup](#8-real-world-multi-environment-setup)
-9. [Useful Commands](#9-useful-commands)
+
+1. [What is Kustomize and Why Does It Exist](#1-what-is-kustomize-and-why-does-it-exist)
+2. [Installation](#2-installation)
+3. [Your First Kustomize Setup — Managing a Directory](#3-your-first-kustomize-setup--managing-a-directory)
+4. [Managing Subdirectories](#4-managing-subdirectories)
+5. [Common Transformers](#5-common-transformers)
+6. [Image Transformer](#6-image-transformer)
+7. [Patches](#7-patches)
+   - [Strategic Merge Patch](#71-strategic-merge-patch)
+   - [JSON 6902 Patch](#72-json-6902-patch)
+   - [Inline Patch vs Patch File](#73-inline-patch-vs-patch-file)
+   - [Patches Directory](#74-patches-directory)
+   - [Patches List](#75-patches-list)
+8. [ConfigMap and Secret Generators](#8-configmap-and-secret-generators)
+9. [Overlays — Managing Multiple Environments](#9-overlays--managing-multiple-environments)
+10. [Components — Reusable Kustomize Modules](#10-components--reusable-kustomize-modules)
+11. [Command Reference](#11-command-reference)
+12. [Quick Reference Cheatsheet](#12-quick-reference-cheatsheet)
 
 ---
 
-## 1. What is Kustomize?
+## 1. What is Kustomize and Why Does It Exist
 
-**Kustomize** is a tool that lets you customize Kubernetes YAML configuration files without modifying the original files.
+### The Problem
 
-It works by taking your **base** Kubernetes manifests and applying **patches/overrides** on top of them to produce the final configuration.
+You have a Kubernetes app. You want to deploy it to three environments — dev, staging, prod.
 
-Think of it like this:
-
-```
-Base Kubernetes YAML
-(original, untouched)
-        +
-Kustomization overrides
-(your changes layered on top)
-        =
-Final YAML sent to Kubernetes
-(merged result)
-```
-
-### Built into kubectl
-
-Kustomize is **built directly into kubectl** since Kubernetes 1.14. You do not need to install anything extra.
-
-```bash
-kubectl apply -k ./my-kustomize-folder/
-```
-
-You can also use the standalone `kustomize` CLI for more control:
-```bash
-kustomize build ./my-kustomize-folder/ | kubectl apply -f -
-```
-
----
-
-## 2. Why Use Kustomize?
-
-### The Problem Without Kustomize
-
-Imagine you have a simple Nginx deployment YAML:
+Your `deployment.yaml` looks like this:
 
 ```yaml
-# deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nginx
+  name: myapp
   namespace: default
-spec:
-  replicas: 1
-  template:
-    spec:
-      containers:
-        - name: nginx
-          image: nginx:1.21
-          resources:
-            requests:
-              memory: "64Mi"
-              cpu: "50m"
-```
-
-Now you need to deploy this to **three environments** — dev, staging, and prod.
-
-**Without Kustomize**, you end up doing one of these:
-- Copy the YAML three times and change values manually → duplicate files, gets out of sync
-- Use `sed` commands to find-and-replace values in scripts → fragile, hard to maintain
-- Create one giant YAML with everything hardcoded → not reusable at all
-
-Any change to the base configuration (e.g., adding a new label or updating the image) means updating all three copies.
-
-### How Kustomize Solves This
-
-With Kustomize, you write the base YAML **once** and define only the **differences** per environment:
-
-```
-base/                   ← write once, the common config
-  deployment.yaml
-  service.yaml
-
-overlays/
-  dev/                  ← only what's different for dev
-  staging/              ← only what's different for staging
-  prod/                 ← only what's different for prod
-```
-
-- Dev → replicas: 1, image: nginx:latest
-- Staging → replicas: 2, image: nginx:1.21
-- Prod → replicas: 5, image: nginx:1.21, resource limits added
-
-All three share the **same base**. You only write and maintain the differences.
-
-### Summary — Why Kustomize?
-- No duplication of YAML files across environments
-- No templating language to learn (it's just YAML)
-- Original files stay clean and untouched
-- Works natively with `kubectl` — no extra tools needed
-- Easy to review changes — you can see exactly what differs per environment
-- Great for GitOps — everything is plain YAML in Git
-
----
-
-## 3. Kustomize vs Helm
-
-| | Kustomize | Helm |
-|---|---|---|
-| Approach | Patches on top of plain YAML | Templates with a custom language |
-| Learning curve | Low — just YAML | Medium — needs Go templating knowledge |
-| Config format | Plain YAML | YAML + `{{ .Values.xxx }}` templating |
-| Built into kubectl | ✅ Yes | ❌ No, separate install |
-| Packaging & sharing | ❌ Not designed for it | ✅ Charts can be packaged and shared |
-| Best for | Managing your own app configs across envs | Installing third-party apps (Prometheus, WordPress, etc.) |
-| Secret management | Basic (use with Sealed Secrets / SOPS) | Basic (same limitation) |
-
-> **When to use which:**
-> Use **Helm** to install third-party software (databases, monitoring, ingress controllers).
-> Use **Kustomize** to manage your own application deployments across environments.
-> They can also be used **together** — Helm to install, Kustomize to patch on top.
-
----
-
-## 4. Core Concepts
-
-### 4.1 kustomization.yaml
-
-This is the **heart of Kustomize**. Every Kustomize folder must have a file named `kustomization.yaml`. This file tells Kustomize:
-- Which resources (YAML files) to include
-- What transformations or patches to apply
-- What generators to run
-
-```yaml
-# kustomization.yaml — minimum example
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-
-resources:
-  - deployment.yaml
-  - service.yaml
-```
-
----
-
-### 4.2 Base
-
-A **Base** is a directory containing the original, common Kubernetes manifests plus a `kustomization.yaml` that references them. It is the starting point — the config that applies everywhere.
-
-```
-base/
-├── kustomization.yaml
-├── deployment.yaml
-└── service.yaml
-```
-
-The base should have no environment-specific values. It should represent the neutral, shared config.
-
----
-
-### 4.3 Overlay
-
-An **Overlay** is a directory that points to a base and defines changes on top of it. Each environment (dev, staging, prod) gets its own overlay.
-
-```
-overlays/
-├── dev/
-│   └── kustomization.yaml     ← points to base, adds dev-specific changes
-├── staging/
-│   └── kustomization.yaml     ← points to base, adds staging-specific changes
-└── prod/
-    └── kustomization.yaml     ← points to base, adds prod-specific changes
-```
-
-An overlay's `kustomization.yaml` references the base using a relative path:
-
-```yaml
-# overlays/dev/kustomization.yaml
-resources:
-  - ../../base          # ← points to the base directory
-```
-
----
-
-### 4.4 Patch
-
-A **Patch** is a YAML snippet that modifies a specific field in a resource. You don't rewrite the whole file — just the parts that need to change.
-
-There are two types of patches:
-- **Strategic Merge Patch** — looks like a partial YAML of the resource, Kustomize merges it
-- **JSON 6902 Patch** — uses JSON patch operations (`add`, `replace`, `remove`) for precise control
-
----
-
-### 4.5 Transformer
-
-A **Transformer** is a built-in Kustomize feature that automatically applies a change across all resources. Examples:
-- Add a label to every resource
-- Add a name prefix to every resource
-- Set the namespace for every resource
-
----
-
-### 4.6 Generator
-
-A **Generator** creates a new Kubernetes resource from non-YAML sources. Examples:
-- Create a ConfigMap from a `.properties` file or `.env` file
-- Create a Secret from literal values or files
-
----
-
-## 5. Kustomize File Structure
-
-### Minimal Structure (single environment)
-```
-my-app/
-├── kustomization.yaml
-├── deployment.yaml
-└── service.yaml
-```
-
-### Standard Multi-Environment Structure
-```
-my-app/
-├── base/
-│   ├── kustomization.yaml
-│   ├── deployment.yaml
-│   ├── service.yaml
-│   └── configmap.yaml
-└── overlays/
-    ├── dev/
-    │   ├── kustomization.yaml
-    │   └── replica-patch.yaml
-    ├── staging/
-    │   ├── kustomization.yaml
-    │   └── replica-patch.yaml
-    └── prod/
-        ├── kustomization.yaml
-        ├── replica-patch.yaml
-        └── resource-limits-patch.yaml
-```
-
----
-
-## 6. Key Functionalities
-
-### 6.1 `resources` — Include YAML Files
-
-Tells Kustomize which files or directories to include.
-
-```yaml
-resources:
-  - deployment.yaml
-  - service.yaml
-  - ../../base            # reference another kustomize directory (base)
-```
-
----
-
-### 6.2 `namePrefix` and `nameSuffix` — Add Prefix/Suffix to All Names
-
-Automatically prepends or appends a string to the `metadata.name` of every resource.
-
-```yaml
-namePrefix: dev-
-nameSuffix: -v2
-```
-
-A resource named `nginx` becomes `dev-nginx-v2` automatically across all included files.
-
-**Use case:** Prevent name collisions when deploying multiple versions to the same namespace.
-
----
-
-### 6.3 `namespace` — Set Namespace for All Resources
-
-Sets the namespace on every resource at once without editing each file.
-
-```yaml
-namespace: dev
-```
-
-**Use case:** Your base files may have no namespace set. Each overlay applies its own.
-
----
-
-### 6.4 `commonLabels` — Add Labels to Everything
-
-Adds labels to every resource (and to selector fields in Deployments/Services).
-
-```yaml
-commonLabels:
-  app: nginx
-  env: dev
-  team: backend
-```
-
-**Use case:** Standardize labels across all resources for filtering and observability.
-
----
-
-### 6.5 `commonAnnotations` — Add Annotations to Everything
-
-Adds annotations to every resource.
-
-```yaml
-commonAnnotations:
-  owner: "platform-team"
-  managed-by: "kustomize"
-```
-
----
-
-### 6.6 `images` — Override Image Name or Tag
-
-Change the container image or tag across all Deployments/StatefulSets without touching the YAML files.
-
-```yaml
-images:
-  - name: nginx                  # match this image name in your manifests
-    newTag: "1.25"               # change just the tag
-  - name: myapp
-    newName: myrepo/myapp        # change the image name
-    newTag: "v2.1.0"             # and the tag
-```
-
-**Use case:** Each environment uses a different image tag. Dev uses `latest`, prod uses a pinned version.
-
----
-
-### 6.7 `patches` — Strategic Merge Patch
-
-Apply a partial YAML that gets merged into the matching resource.
-
-```yaml
-patches:
-  - path: replica-patch.yaml
-```
-
-The patch file looks like a partial version of the resource you want to modify:
-
-```yaml
-# replica-patch.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: nginx           # must match the resource you're targeting
-spec:
-  replicas: 5           # only this field is changed — everything else stays
-```
-
-Kustomize finds the Deployment named `nginx` and merges this patch into it.
-
----
-
-### 6.8 `patches` — JSON 6902 Patch
-
-More surgical — you specify the exact path to modify using JSON Patch operations.
-
-```yaml
-patches:
-  - target:
-      kind: Deployment
-      name: nginx
-    patch: |
-      - op: replace
-        path: /spec/replicas
-        value: 3
-      - op: add
-        path: /spec/template/spec/containers/0/env
-        value:
-          - name: ENV
-            value: "production"
-```
-
-Operations available:
-| Operation | What it Does |
-|---|---|
-| `replace` | Replace the value at the given path |
-| `add` | Add a new field or array item |
-| `remove` | Remove a field or array item |
-
----
-
-### 6.9 `configMapGenerator` — Generate ConfigMaps
-
-Generate a ConfigMap from files, `.env` files, or literal values.
-
-```yaml
-configMapGenerator:
-  - name: app-config
-    literals:
-      - APP_ENV=production
-      - LOG_LEVEL=info
-    files:
-      - config.properties
-    envs:
-      - app.env
-```
-
-Kustomize automatically **appends a hash** to the ConfigMap name (e.g., `app-config-7d8f9g2`). When the content changes, the hash changes, which forces a rolling update of all Pods using that ConfigMap.
-
-To disable the hash:
-```yaml
-configMapGenerator:
-  - name: app-config
-    options:
-      disableNameSuffixHash: true
-    literals:
-      - APP_ENV=production
-```
-
----
-
-### 6.10 `secretGenerator` — Generate Secrets
-
-Generate a Kubernetes Secret from literals or files.
-
-```yaml
-secretGenerator:
-  - name: db-credentials
-    literals:
-      - DB_USER=admin
-      - DB_PASSWORD=supersecret
-    type: Opaque
-```
-
-> ⚠️ **Important:** Never commit actual secrets in plain text to Git. Use this with tools like **Sealed Secrets** or **SOPS** to encrypt secret values before committing.
-
----
-
-### 6.11 `vars` — Reference Field Values Across Resources
-
-Allows you to reference a value from one resource and use it in another. For example, referencing a Service name in a Deployment's environment variable.
-
-> Note: `vars` is deprecated in newer versions of Kustomize. Prefer using `replacements` for this in Kustomize v4.1+.
-
----
-
-### 6.12 `components` — Reusable Kustomize Modules
-
-A **Component** is like a reusable plugin — a chunk of Kustomize config that can be shared and included in multiple overlays.
-
-```yaml
-# components/monitoring/kustomization.yaml
-apiVersion: kustomize.config.k8s.io/v1alpha1
-kind: Component
-
-resources:
-  - servicemonitor.yaml
-
-commonLabels:
-  prometheus: "true"
-```
-
-Include it in an overlay:
-```yaml
-# overlays/prod/kustomization.yaml
-components:
-  - ../../components/monitoring
-```
-
-**Use case:** You want to add monitoring config to prod and staging but not dev. Define it once as a component, include it only where needed.
-
----
-
-## 7. Practical Examples
-
----
-
-### Example 1 — Simple Single App Setup
-
-**Goal:** Deploy an Nginx app with Kustomize.
-
-**File structure:**
-```
-nginx-app/
-├── kustomization.yaml
-├── deployment.yaml
-└── service.yaml
-```
-
-**deployment.yaml:**
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: nginx
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: nginx
+      app: myapp
   template:
     metadata:
       labels:
-        app: nginx
+        app: myapp
     spec:
       containers:
-        - name: nginx
-          image: nginx:1.21
-          ports:
-            - containerPort: 80
+        - name: myapp
+          image: myrepo/myapp:latest
 ```
 
-**service.yaml:**
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: nginx
-spec:
-  selector:
-    app: nginx
-  ports:
-    - port: 80
-      targetPort: 80
-  type: ClusterIP
+Each environment needs different values:
+
+| Setting    | Dev     | Staging        | Prod           |
+| ---------- | ------- | -------------- | -------------- |
+| Namespace  | dev     | staging        | prod           |
+| Replicas   | 1       | 2              | 5              |
+| Image tag  | latest  | v1.4.0-rc1     | v1.4.0         |
+
+**Without Kustomize** — your options are:
+
+- Copy the YAML 3 times and change values manually → files go out of sync, hard to manage
+- Use `sed` in shell scripts to replace values → fragile, unreadable
+- Write one giant YAML with everything hardcoded → not reusable at all
+
+Any time you add a new label, fix a typo, or change a port — you do it in all three copies.
+
+### The Solution — Kustomize
+
+Kustomize lets you write your Kubernetes YAML **once** as a base, and then define only the **differences** for each environment as separate small files called overlays.
+
+```
+base YAML (written once)
+    +
+overlay for dev (only the differences)
+    =
+final YAML for dev cluster
 ```
 
-**kustomization.yaml:**
-```yaml
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-
-resources:
-  - deployment.yaml
-  - service.yaml
-
-namespace: my-app
-
-commonLabels:
-  app: nginx
-  managed-by: kustomize
+```
+base YAML (same)
+    +
+overlay for prod (only the differences)
+    =
+final YAML for prod cluster
 ```
 
-**Build and preview (does not apply, just shows output):**
-```bash
-kubectl kustomize ./nginx-app/
-```
+### What Kustomize is NOT
 
-**Apply to cluster:**
-```bash
-kubectl apply -k ./nginx-app/
-```
+- It is **not a templating engine** — there are no `{{ }}` or `${}` placeholders
+- It is **not Helm** — it does not package and distribute charts
+- It does **not touch your original files** — base files stay exactly as written
+
+Everything in Kustomize is **plain YAML**. No new syntax to learn.
 
 ---
 
-### Example 2 — Image Override Per Environment
+## 2. Installation
 
-**Goal:** Use the same deployment but different image tags for dev and prod.
+### Option 1 — Already inside kubectl (recommended for most users)
 
-**base/deployment.yaml:**
+Kustomize has been **built into kubectl** since Kubernetes 1.14. If you have kubectl installed, you already have Kustomize.
+
+```bash
+kubectl version --client
+```
+
+Use it with:
+```bash
+kubectl apply -k <directory>
+kubectl kustomize <directory>
+```
+
+### Option 2 — Standalone kustomize CLI
+
+The standalone CLI has newer features and is updated more frequently than the kubectl-bundled version.
+
+**On Linux:**
+```bash
+curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+sudo mv kustomize /usr/local/bin/
+```
+
+**On macOS:**
+```bash
+brew install kustomize
+```
+
+**On Windows:**
+```powershell
+choco install kustomize
+```
+
+**Verify installation:**
+```bash
+kustomize version
+```
+
+### Which one to use?
+
+Use `kubectl apply -k` for day-to-day use.
+Use `kustomize build` when you want to preview the final YAML before applying.
+
+---
+
+## 3. Your First Kustomize Setup — Managing a Directory
+
+### What is kustomization.yaml?
+
+Every Kustomize setup starts with one mandatory file — `kustomization.yaml`.
+
+This file is the **control file**. It tells Kustomize:
+- Which YAML files to include
+- What changes to apply on top of them
+
+Without this file, Kustomize does nothing.
+
+### Minimal Example
+
+Create this folder structure:
+
+```
+myapp/
+├── kustomization.yaml
+├── deployment.yaml
+└── service.yaml
+```
+
+**deployment.yaml**
+
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -582,81 +198,666 @@ spec:
     spec:
       containers:
         - name: myapp
-          image: myrepo/myapp:latest
+          image: myrepo/myapp:v1.0
+          ports:
+            - containerPort: 8080
 ```
 
-**base/kustomization.yaml:**
+**service.yaml**
+
 ```yaml
-resources:
-  - deployment.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp
+spec:
+  selector:
+    app: myapp
+  ports:
+    - port: 80
+      targetPort: 8080
+  type: ClusterIP
 ```
 
-**overlays/dev/kustomization.yaml:**
+**kustomization.yaml**
+
 ```yaml
-resources:
-  - ../../base
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
 
-namespace: dev
-
-images:
-  - name: myrepo/myapp
-    newTag: "latest"
-```
-
-**overlays/prod/kustomization.yaml:**
-```yaml
-resources:
-  - ../../base
-
-namespace: prod
-
-images:
-  - name: myrepo/myapp
-    newTag: "v1.5.2"       # pinned, stable version for prod
-```
-
-**Apply dev:**
-```bash
-kubectl apply -k ./overlays/dev/
-```
-
-**Apply prod:**
-```bash
-kubectl apply -k ./overlays/prod/
-```
-
----
-
-### Example 3 — Strategic Merge Patch (Change Replicas and Resources)
-
-**Goal:** Prod needs more replicas and resource limits that dev doesn't need.
-
-**base/kustomization.yaml:**
-```yaml
 resources:
   - deployment.yaml
   - service.yaml
 ```
 
-**overlays/prod/kustomization.yaml:**
-```yaml
-resources:
-  - ../../base
+### Preview the output (does NOT apply anything)
 
-namespace: prod
-
-patches:
-  - path: prod-patch.yaml
+```bash
+kubectl kustomize ./myapp/
 ```
 
-**overlays/prod/prod-patch.yaml:**
+This prints the final merged YAML to your terminal. Use this before every apply to verify what will be sent to Kubernetes.
+
+### Apply to the cluster
+
+```bash
+kubectl apply -k ./myapp/
+```
+
+### Delete from the cluster
+
+```bash
+kubectl delete -k ./myapp/
+```
+
+### What happened?
+
+Right now the output is identical to the input — we added no changes yet.
+The point of this step is to understand the basic wiring:
+
+```
+kustomization.yaml lists the files
+        ↓
+kustomize reads and merges them
+        ↓
+final YAML is produced
+        ↓
+kubectl sends it to the cluster
+```
+
+---
+
+## 4. Managing Subdirectories
+
+As your app grows, you may have many YAML files organized into subfolders.
+Kustomize can reference files in subdirectories directly.
+
+### Example — App with subfolders
+
+```
+myapp/
+├── kustomization.yaml
+├── deployments/
+│   ├── app-deployment.yaml
+│   └── worker-deployment.yaml
+├── services/
+│   └── app-service.yaml
+└── configs/
+    └── configmap.yaml
+```
+
+**kustomization.yaml**
+
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - deployments/app-deployment.yaml
+  - deployments/worker-deployment.yaml
+  - services/app-service.yaml
+  - configs/configmap.yaml
+```
+
+Kustomize follows the paths and reads each file. You can mix files from any subfolder freely.
+
+### Referencing another Kustomize directory
+
+You can also point to an entire directory that itself has a `kustomization.yaml`:
+
+```yaml
+resources:
+  - ./another-kustomize-folder/     # Kustomize reads that folder's kustomization.yaml
+  - deployment.yaml
+```
+
+This is how **overlays** reference a **base** — covered in detail in Section 9.
+
+---
+
+## 5. Common Transformers
+
+Transformers are **built-in operations** in Kustomize that automatically apply a change
+across **all resources** listed in your `kustomization.yaml`.
+You declare them once and they apply everywhere — no need to touch individual files.
+
+---
+
+### 5.1 namespace — Set Namespace on All Resources
+
+Sets the `metadata.namespace` field on every resource at once.
+
+**Without Kustomize** — you'd have to add `namespace:` to every single YAML file.
+
+**With Kustomize:**
+
+```yaml
+# kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - deployment.yaml
+  - service.yaml
+
+namespace: production
+```
+
+Both the Deployment and the Service will have `namespace: production` in the final output,
+even though neither file mentions a namespace.
+
+---
+
+### 5.2 namePrefix and nameSuffix — Add Prefix or Suffix to All Names
+
+Automatically prepends or appends a string to `metadata.name` of every resource.
+
+```yaml
+# kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - deployment.yaml
+  - service.yaml
+
+namePrefix: prod-
+nameSuffix: -v2
+```
+
+A resource named `myapp` becomes `prod-myapp-v2` in the final output.
+
+**Why use this?**
+When you deploy the same app to multiple environments in the same cluster,
+name collisions would otherwise occur. Adding `dev-` or `prod-` as a prefix makes every resource name unique.
+
+---
+
+### 5.3 commonLabels — Add Labels to All Resources
+
+Adds the same set of labels to the `metadata.labels` of every resource.
+For Deployments and Services it also adds labels to `spec.selector` and `spec.template.metadata.labels`.
+
+```yaml
+# kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - deployment.yaml
+  - service.yaml
+
+commonLabels:
+  env: production
+  team: backend
+  managed-by: kustomize
+```
+
+Every resource in the output will carry these three labels.
+
+**Why use this?**
+Labels are how you filter and query resources with `kubectl get`, and how tools
+like Prometheus, Datadog, or ArgoCD identify and group resources.
+
+---
+
+### 5.4 commonAnnotations — Add Annotations to All Resources
+
+Same idea as `commonLabels` but for annotations.
+
+```yaml
+# kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - deployment.yaml
+  - service.yaml
+
+commonAnnotations:
+  owner: "platform-team"
+  contact: "platform@company.com"
+  managed-by: "kustomize"
+```
+
+---
+
+### Full Transformer Example Together
+
+```yaml
+# kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - deployment.yaml
+  - service.yaml
+
+namespace: production
+namePrefix: prod-
+
+commonLabels:
+  env: production
+  app: myapp
+
+commonAnnotations:
+  owner: platform-team
+```
+
+**Preview the result:**
+```bash
+kubectl kustomize ./myapp/
+```
+
+The output will show both the Deployment and Service with:
+- `namespace: production`
+- `name: prod-myapp`
+- Labels `env: production` and `app: myapp`
+- Annotation `owner: platform-team`
+
+None of the original YAML files were touched.
+
+---
+
+## 6. Image Transformer
+
+The image transformer lets you change the **container image name, tag, or digest**
+across all resources without touching any YAML file.
+
+This is one of the most useful features in Kustomize for CI/CD pipelines.
+
+### Syntax
+
+```yaml
+# kustomization.yaml
+images:
+  - name: <image-name-to-match>      # exact name as written in your deployment
+    newName: <replacement-image>     # optional: change the image name
+    newTag: <replacement-tag>        # optional: change the tag
+    digest: <sha256:...>             # optional: pin to a specific digest instead of tag
+```
+
+### Example 1 — Change only the tag
+
+Your `deployment.yaml` has:
+```yaml
+containers:
+  - name: myapp
+    image: myrepo/myapp:latest
+```
+
+**kustomization.yaml:**
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - deployment.yaml
+
+images:
+  - name: myrepo/myapp
+    newTag: "v1.5.0"
+```
+
+Output in final YAML:
+```yaml
+image: myrepo/myapp:v1.5.0
+```
+
+The deployment file still says `latest` — Kustomize changed it in the final output only.
+
+---
+
+### Example 2 — Change image name and tag
+
+```yaml
+images:
+  - name: myrepo/myapp          # match this in deployment
+    newName: gcr.io/myproject/myapp   # use this registry instead
+    newTag: "v2.0.0"
+```
+
+Output:
+```yaml
+image: gcr.io/myproject/myapp:v2.0.0
+```
+
+---
+
+### Example 3 — Multiple images in one deployment
+
+```yaml
+images:
+  - name: myrepo/frontend
+    newTag: "v3.1.0"
+  - name: myrepo/backend
+    newTag: "v2.5.0"
+  - name: redis
+    newTag: "7.2-alpine"
+```
+
+Each image is matched by name. Kustomize updates them independently.
+
+---
+
+### Why this is powerful in CI/CD
+
+In your pipeline, after building and pushing an image:
+
+```bash
+# In your CI script
+IMAGE_TAG=$(git rev-parse --short HEAD)
+
+kustomize edit set image myrepo/myapp=myrepo/myapp:$IMAGE_TAG
+kubectl apply -k .
+```
+
+`kustomize edit set image` updates `kustomization.yaml` automatically with the new tag.
+Then you apply — the deployment gets the new image with zero manual file editing.
+
+---
+
+## 7. Patches
+
+A **patch** is a file or inline block that modifies a specific field inside a specific resource.
+
+Unlike transformers (which apply to all resources), patches **target one specific resource**
+and change only the fields you specify. Everything else in that resource stays untouched.
+
+---
+
+### 7.1 Strategic Merge Patch
+
+A **Strategic Merge Patch** looks like a partial copy of the resource you want to modify.
+You write only the fields you want to change. Kustomize finds the matching resource
+(by `kind` and `name`) and merges your patch into it.
+
+**Rules:**
+- The patch must have the same `apiVersion`, `kind`, and `metadata.name` as the resource
+- You only include the fields you want to change
+- Everything not mentioned in the patch stays as-is from the base
+
+**Example — change replicas and add resource limits**
+
+Base `deployment.yaml`:
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: myapp         # must match the name in base
+  name: myapp
 spec:
-  replicas: 5         # override replicas
+  replicas: 1
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+        - name: myapp
+          image: myrepo/myapp:v1.0
+          ports:
+            - containerPort: 8080
+```
+
+Patch file `increase-replicas.yaml`:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp           # must match the base deployment name exactly
+spec:
+  replicas: 5           # only this changes
+  template:
+    spec:
+      containers:
+        - name: myapp   # must match the container name exactly
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+```
+
+**kustomization.yaml:**
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - deployment.yaml
+
+patches:
+  - path: increase-replicas.yaml
+```
+
+**Final output after build:**
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp
+spec:
+  replicas: 5           # ← changed by patch
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+        - name: myapp
+          image: myrepo/myapp:v1.0   # ← unchanged, came from base
+          ports:
+            - containerPort: 8080    # ← unchanged, came from base
+          resources:                 # ← added by patch
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+```
+
+The base file itself is never modified.
+
+---
+
+### 7.2 JSON 6902 Patch
+
+A **JSON 6902 Patch** is more precise. Instead of writing a partial YAML,
+you write explicit operations with a path to the exact field.
+
+This is useful when:
+- You want to add a new item to a list (like adding an env variable)
+- You want to remove a specific field
+- The Strategic Merge Patch is being too aggressive (merging when you want to replace)
+
+**Operations:**
+
+| Operation | What it Does                               |
+| --------- | ------------------------------------------ |
+| `replace` | Replace an existing value at a given path  |
+| `add`     | Add a new key or append to a list          |
+| `remove`  | Remove a field or item from a list         |
+
+**Path syntax:**
+Paths use `/` as separator, following the JSON Pointer format.
+
+```
+/spec/replicas                           → spec.replicas
+/spec/template/spec/containers/0/image   → first container's image
+/metadata/labels/env                     → labels.env
+```
+
+**Example 1 — Replace replicas**
+
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - deployment.yaml
+
+patches:
+  - target:
+      kind: Deployment
+      name: myapp
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 3
+```
+
+**Example 2 — Add an environment variable to a container**
+
+```yaml
+patches:
+  - target:
+      kind: Deployment
+      name: myapp
+    patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/env
+        value:
+          - name: APP_ENV
+            value: "production"
+          - name: LOG_LEVEL
+            value: "warn"
+```
+
+**Example 3 — Remove a field**
+
+```yaml
+patches:
+  - target:
+      kind: Deployment
+      name: myapp
+    patch: |
+      - op: remove
+        path: /spec/template/spec/containers/0/resources/limits
+```
+
+**Example 4 — Multiple operations in one patch**
+
+```yaml
+patches:
+  - target:
+      kind: Deployment
+      name: myapp
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 5
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: "myrepo/myapp:v2.0.0"
+      - op: add
+        path: /spec/template/spec/containers/0/env
+        value:
+          - name: ENV
+            value: "production"
+```
+
+---
+
+### 7.3 Inline Patch vs Patch File
+
+You have two ways to write a patch:
+
+**Way 1 — Inline (inside kustomization.yaml)**
+
+The patch is written directly inside `kustomization.yaml` using the `patch: |` block.
+Good for small, simple patches.
+
+```yaml
+patches:
+  - target:
+      kind: Deployment
+      name: myapp
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 3
+```
+
+**Way 2 — Separate file (recommended for anything bigger)**
+
+The patch lives in its own `.yaml` file and is referenced by path.
+Good for strategic merge patches and anything complex.
+
+```yaml
+patches:
+  - path: patches/increase-replicas.yaml
+  - path: patches/add-env-vars.yaml
+```
+
+**When to use which:**
+
+| | Inline | File |
+|---|---|---|
+| Simple one-liner changes | ✅ Good | Works too |
+| Strategic merge patches | Not ideal | ✅ Recommended |
+| Complex multi-field patches | Hard to read | ✅ Recommended |
+| Git diffs and reviews | Hard to read | ✅ Easier to review |
+
+---
+
+### 7.4 Patches Directory
+
+When you have many patches, keep them in a dedicated `patches/` subdirectory
+to keep the folder clean and organized.
+
+**Folder structure:**
+```
+myapp/
+├── kustomization.yaml
+├── deployment.yaml
+├── service.yaml
+└── patches/
+    ├── replica-patch.yaml
+    ├── resource-limits-patch.yaml
+    └── env-vars-patch.yaml
+```
+
+**kustomization.yaml:**
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - deployment.yaml
+  - service.yaml
+
+patches:
+  - path: patches/replica-patch.yaml
+  - path: patches/resource-limits-patch.yaml
+  - path: patches/env-vars-patch.yaml
+```
+
+**patches/replica-patch.yaml:**
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp
+spec:
+  replicas: 5
+```
+
+**patches/resource-limits-patch.yaml:**
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp
+spec:
   template:
     spec:
       containers:
@@ -670,15 +871,125 @@ spec:
               cpu: "500m"
 ```
 
-Kustomize **merges** this patch into the base Deployment. Only the fields in the patch change — everything else from the base remains.
+**patches/env-vars-patch.yaml:**
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp
+spec:
+  template:
+    spec:
+      containers:
+        - name: myapp
+          env:
+            - name: APP_ENV
+              value: production
+            - name: LOG_LEVEL
+              value: warn
+```
+
+Kustomize applies all three patches in order. The final Deployment has all three sets of changes merged together.
 
 ---
 
-### Example 4 — ConfigMap Generator
+### 7.5 Patches List — Targeting Multiple Resources with One Entry
 
-**Goal:** Create a ConfigMap from an env file and inject it into the app.
+When you have a patch that applies to **multiple resources**, you can use a `target`
+with broader selectors instead of writing separate patch entries.
 
-**app.env:**
+**Target by kind only (applies to all Deployments):**
+
+```yaml
+patches:
+  - target:
+      kind: Deployment      # applies to ALL Deployments in the resource list
+    patch: |
+      - op: add
+        path: /spec/template/metadata/annotations
+        value:
+          prometheus.io/scrape: "true"
+          prometheus.io/port: "8080"
+```
+
+**Target by label selector:**
+
+```yaml
+patches:
+  - target:
+      kind: Deployment
+      labelSelector: "env=production"   # only Deployments with this label
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 3
+```
+
+**Target by name + kind (most specific):**
+
+```yaml
+patches:
+  - target:
+      kind: Deployment
+      name: myapp           # only the Deployment named myapp
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 5
+  - target:
+      kind: Deployment
+      name: worker          # only the Deployment named worker
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 2
+```
+
+This is a **patches list** — multiple patch entries, each targeting different resources.
+They are all processed in the order listed.
+
+---
+
+## 8. ConfigMap and Secret Generators
+
+Generators let Kustomize **create** Kubernetes resources for you from plain files
+or key-value pairs — without you having to write the full YAML for them.
+
+---
+
+### 8.1 configMapGenerator
+
+Instead of writing a ConfigMap YAML by hand, you can generate it from:
+- Literal key=value pairs
+- A `.env` file
+- A plain file (the file content becomes the ConfigMap value)
+
+**From literals:**
+
+```yaml
+configMapGenerator:
+  - name: app-config
+    literals:
+      - APP_ENV=production
+      - LOG_LEVEL=warn
+      - DB_PORT=5432
+```
+
+This generates:
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config-7f4k9m2   # ← hash appended automatically
+data:
+  APP_ENV: production
+  LOG_LEVEL: warn
+  DB_PORT: "5432"
+```
+
+**From a .env file:**
+
+Create `app.env`:
 ```
 APP_ENV=production
 LOG_LEVEL=warn
@@ -686,88 +997,141 @@ DB_HOST=postgres.prod.svc.cluster.local
 DB_PORT=5432
 ```
 
-**kustomization.yaml:**
 ```yaml
-resources:
-  - deployment.yaml
-
 configMapGenerator:
   - name: app-config
     envs:
       - app.env
 ```
 
-**Using the ConfigMap in deployment.yaml:**
+**From a plain file:**
+
+Create `nginx.conf`:
+```
+server {
+  listen 80;
+  server_name myapp.com;
+}
+```
+
 ```yaml
+configMapGenerator:
+  - name: nginx-config
+    files:
+      - nginx.conf
+```
+
+The file content becomes a key in the ConfigMap where the key is the filename.
+
+**Combining all three:**
+```yaml
+configMapGenerator:
+  - name: app-config
+    literals:
+      - APP_ENV=production
+    envs:
+      - app.env
+    files:
+      - nginx.conf
+```
+
+### The Hash — Why It Exists and How to Disable It
+
+Kustomize appends a hash to the ConfigMap name (e.g., `app-config-7f4k9m2`).
+
+**Why?** When you change the ConfigMap content, the hash changes, which changes
+the name, which forces Kubernetes to do a **rolling restart** of all Pods that use it.
+Without this, updating a ConfigMap would not restart Pods — they'd keep using the old values.
+
+**To disable the hash** (if you manage restarts yourself):
+```yaml
+configMapGenerator:
+  - name: app-config
+    options:
+      disableNameSuffixHash: true
+    literals:
+      - APP_ENV=production
+```
+
+**Using the generated ConfigMap in your Deployment:**
+```yaml
+# deployment.yaml
 spec:
   containers:
     - name: myapp
       image: myrepo/myapp:v1.0
       envFrom:
         - configMapRef:
-            name: app-config      # Kustomize will resolve the hashed name automatically
+            name: app-config    # write the base name — Kustomize resolves the hash automatically
 ```
 
-When you change `app.env`, Kustomize generates a new ConfigMap with a new hash, which triggers a rolling restart of the Deployment automatically.
+You write `app-config` in the deployment — Kustomize automatically rewrites it to
+`app-config-7f4k9m2` (or whatever the current hash is) in the final output.
 
 ---
 
-### Example 5 — JSON 6902 Patch (Add an Environment Variable)
+### 8.2 secretGenerator
 
-**Goal:** Add an environment variable to the container only in production.
+Same as `configMapGenerator` but creates a Kubernetes Secret.
+Values are base64 encoded automatically by Kubernetes.
 
-**overlays/prod/kustomization.yaml:**
 ```yaml
-resources:
-  - ../../base
-
-patches:
-  - target:
-      kind: Deployment
-      name: myapp
-    patch: |
-      - op: add
-        path: /spec/template/spec/containers/0/env
-        value:
-          - name: ENVIRONMENT
-            value: "production"
-          - name: FEATURE_FLAG
-            value: "enabled"
+secretGenerator:
+  - name: db-credentials
+    literals:
+      - DB_USER=admin
+      - DB_PASSWORD=supersecretpassword
+    type: Opaque
 ```
+
+From a file (e.g., TLS cert):
+```yaml
+secretGenerator:
+  - name: tls-secret
+    files:
+      - tls.crt
+      - tls.key
+    type: kubernetes.io/tls
+```
+
+> ⚠️ **Never commit actual passwords to Git in plain text.**
+> Use **Sealed Secrets** or **SOPS** to encrypt secrets before committing.
+> The `secretGenerator` is fine for local testing but not for production Git workflows
+> without encryption.
 
 ---
 
-## 8. Real-World Multi-Environment Setup
+## 9. Overlays — Managing Multiple Environments
 
-This is the most common pattern used in production GitOps workflows.
+This is the most important concept in Kustomize. Everything you learned so far
+builds up to this.
 
-### Full Structure
+### The Pattern
+
 ```
-my-app/
-├── base/
-│   ├── kustomization.yaml
-│   ├── deployment.yaml
-│   ├── service.yaml
-│   └── configmap.yaml
+project/
+├── base/               ← common YAML, written once
 └── overlays/
-    ├── dev/
-    │   ├── kustomization.yaml
-    │   └── patches/
-    │       └── replica-patch.yaml
-    ├── staging/
-    │   ├── kustomization.yaml
-    │   └── patches/
-    │       └── replica-patch.yaml
-    └── prod/
-        ├── kustomization.yaml
-        └── patches/
-            ├── replica-patch.yaml
-            └── resources-patch.yaml
+    ├── dev/            ← what changes for dev
+    ├── staging/        ← what changes for staging
+    └── prod/           ← what changes for prod
 ```
+
+**Base** = your neutral, shared Kubernetes config. No environment-specific values.
+**Overlay** = a thin layer on top of base that defines only what is different for that environment.
 
 ---
 
-### base/deployment.yaml
+### Step 1 — Write the Base
+
+```
+base/
+├── kustomization.yaml
+├── deployment.yaml
+└── service.yaml
+```
+
+**base/deployment.yaml**
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -790,7 +1154,7 @@ spec:
             - containerPort: 8080
 ```
 
-### base/service.yaml
+**base/service.yaml**
 ```yaml
 apiVersion: v1
 kind: Service
@@ -805,7 +1169,7 @@ spec:
   type: ClusterIP
 ```
 
-### base/kustomization.yaml
+**base/kustomization.yaml**
 ```yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -815,44 +1179,63 @@ resources:
   - service.yaml
 ```
 
+The base has no namespace, no env-specific values. It is just the plain, reusable config.
+
 ---
 
-### overlays/dev/kustomization.yaml
+### Step 2 — Write the Dev Overlay
+
+```
+overlays/dev/
+├── kustomization.yaml
+└── patches/
+    └── dev-patch.yaml
+```
+
+**overlays/dev/kustomization.yaml**
 ```yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - ../../base
+  - ../../base          # ← this points to the base directory
 
 namespace: dev
-
 namePrefix: dev-
+
+commonLabels:
+  env: dev
 
 images:
   - name: myrepo/myapp
     newTag: "latest"
 
-commonLabels:
-  env: dev
-
 patches:
-  - path: patches/replica-patch.yaml
+  - path: patches/dev-patch.yaml
 ```
 
-### overlays/dev/patches/replica-patch.yaml
+**overlays/dev/patches/dev-patch.yaml**
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: myapp
 spec:
-  replicas: 1
+  replicas: 1           # dev runs 1 replica
 ```
 
 ---
 
-### overlays/staging/kustomization.yaml
+### Step 3 — Write the Staging Overlay
+
+```
+overlays/staging/
+├── kustomization.yaml
+└── patches/
+    └── staging-patch.yaml
+```
+
+**overlays/staging/kustomization.yaml**
 ```yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -861,21 +1244,20 @@ resources:
   - ../../base
 
 namespace: staging
-
 namePrefix: staging-
-
-images:
-  - name: myrepo/myapp
-    newTag: "v1.5.0-rc1"
 
 commonLabels:
   env: staging
 
+images:
+  - name: myrepo/myapp
+    newTag: "v1.4.0-rc1"      # release candidate for testing
+
 patches:
-  - path: patches/replica-patch.yaml
+  - path: patches/staging-patch.yaml
 ```
 
-### overlays/staging/patches/replica-patch.yaml
+**overlays/staging/patches/staging-patch.yaml**
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -887,7 +1269,17 @@ spec:
 
 ---
 
-### overlays/prod/kustomization.yaml
+### Step 4 — Write the Prod Overlay
+
+```
+overlays/prod/
+├── kustomization.yaml
+└── patches/
+    ├── prod-replica-patch.yaml
+    └── prod-resources-patch.yaml
+```
+
+**overlays/prod/kustomization.yaml**
 ```yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -896,25 +1288,24 @@ resources:
   - ../../base
 
 namespace: prod
-
 namePrefix: prod-
-
-images:
-  - name: myrepo/myapp
-    newTag: "v1.5.0"
 
 commonLabels:
   env: prod
 
 commonAnnotations:
-  owner: "platform-team"
+  owner: platform-team
+
+images:
+  - name: myrepo/myapp
+    newTag: "v1.4.0"          # stable pinned version for prod
 
 patches:
-  - path: patches/replica-patch.yaml
-  - path: patches/resources-patch.yaml
+  - path: patches/prod-replica-patch.yaml
+  - path: patches/prod-resources-patch.yaml
 ```
 
-### overlays/prod/patches/replica-patch.yaml
+**overlays/prod/patches/prod-replica-patch.yaml**
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -924,7 +1315,7 @@ spec:
   replicas: 5
 ```
 
-### overlays/prod/patches/resources-patch.yaml
+**overlays/prod/patches/prod-resources-patch.yaml**
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -946,24 +1337,51 @@ spec:
 
 ---
 
-### What Each Environment Gets
+### Full Directory Structure
 
-| Setting | Dev | Staging | Prod |
-|---|---|---|---|
-| Namespace | `dev` | `staging` | `prod` |
-| Name prefix | `dev-` | `staging-` | `prod-` |
-| Replicas | 1 | 2 | 5 |
-| Image tag | `latest` | `v1.5.0-rc1` | `v1.5.0` |
-| Resource limits | ❌ No | ❌ No | ✅ Yes |
-
-All from the **same base** — zero duplication.
+```
+project/
+├── base/
+│   ├── kustomization.yaml
+│   ├── deployment.yaml
+│   └── service.yaml
+└── overlays/
+    ├── dev/
+    │   ├── kustomization.yaml
+    │   └── patches/
+    │       └── dev-patch.yaml
+    ├── staging/
+    │   ├── kustomization.yaml
+    │   └── patches/
+    │       └── staging-patch.yaml
+    └── prod/
+        ├── kustomization.yaml
+        └── patches/
+            ├── prod-replica-patch.yaml
+            └── prod-resources-patch.yaml
+```
 
 ---
 
-### Apply Each Environment
+### What Each Environment Gets
+
+| Setting         | Dev       | Staging        | Prod            |
+| --------------- | --------- | -------------- | --------------- |
+| Namespace       | `dev`     | `staging`      | `prod`          |
+| Name prefix     | `dev-`    | `staging-`     | `prod-`         |
+| Replicas        | 1         | 2              | 5               |
+| Image tag       | `latest`  | `v1.4.0-rc1`  | `v1.4.0`        |
+| Resource limits | ❌ None   | ❌ None        | ✅ Set          |
+| Annotations     | ❌ None   | ❌ None        | ✅ owner label  |
+
+All from the **same base**. Zero duplication.
+
+---
+
+### Preview and Apply Each Environment
 
 ```bash
-# Preview without applying
+# Always preview before applying
 kubectl kustomize ./overlays/dev/
 kubectl kustomize ./overlays/staging/
 kubectl kustomize ./overlays/prod/
@@ -979,96 +1397,270 @@ kubectl delete -k ./overlays/dev/
 
 ---
 
-## 9. Useful Commands
+## 10. Components — Reusable Kustomize Modules
 
-| Command | What it Does |
-|---|---|
-| `kubectl kustomize <dir>` | Build and print the final YAML (does NOT apply) |
-| `kubectl apply -k <dir>` | Build and apply to the cluster |
-| `kubectl delete -k <dir>` | Delete all resources defined by the kustomization |
-| `kubectl diff -k <dir>` | Show diff between current cluster state and kustomize output |
-| `kustomize build <dir>` | Same as kubectl kustomize, using standalone CLI |
-| `kustomize build <dir> \| kubectl apply -f -` | Build with standalone CLI and pipe to kubectl |
-| `kustomize version` | Show installed kustomize version |
+A **Component** is a reusable piece of Kustomize config — like a plugin that you can
+switch on or off per environment.
+
+### Problem it Solves
+
+Imagine you have a monitoring setup (ServiceMonitor, labels, annotations) that you want
+in staging and prod but NOT in dev.
+
+You could copy the monitoring config into both staging and prod overlays — but then
+you have duplication again.
+
+**With Components**, you define the monitoring config once in a shared location
+and simply include it in the overlays that need it.
 
 ---
 
-## Quick Reference — kustomization.yaml Fields
+### Step 1 — Create the Component
+
+```
+components/
+└── monitoring/
+    ├── kustomization.yaml
+    └── servicemonitor.yaml
+```
+
+**components/monitoring/kustomization.yaml**
+```yaml
+apiVersion: kustomize.config.k8s.io/v1alpha1   # ← note: v1alpha1 for components
+kind: Component                                 # ← note: kind is Component not Kustomization
+
+resources:
+  - servicemonitor.yaml
+
+commonLabels:
+  prometheus.io/scrape: "true"
+
+commonAnnotations:
+  prometheus.io/port: "8080"
+  prometheus.io/path: "/metrics"
+```
+
+**components/monitoring/servicemonitor.yaml**
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: myapp-monitor
+spec:
+  selector:
+    matchLabels:
+      app: myapp
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+```
+
+---
+
+### Step 2 — Include the Component in the Overlays That Need It
+
+**overlays/staging/kustomization.yaml**
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+namespace: staging
+
+components:
+  - ../../components/monitoring    # ← monitoring added for staging
+```
+
+**overlays/prod/kustomization.yaml**
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+namespace: prod
+
+components:
+  - ../../components/monitoring    # ← monitoring added for prod
+```
+
+**overlays/dev/kustomization.yaml**
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+namespace: dev
+
+# no components section — dev does not get monitoring
+```
+
+---
+
+### Another Component Example — External Secrets (only in prod)
+
+```
+components/
+└── external-secrets/
+    ├── kustomization.yaml
+    └── externalsecret.yaml
+```
+
+**components/external-secrets/kustomization.yaml**
+```yaml
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+resources:
+  - externalsecret.yaml
+```
+
+**components/external-secrets/externalsecret.yaml**
+```yaml
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: myapp-secrets
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: vault-backend
+    kind: ClusterSecretStore
+  target:
+    name: myapp-secret
+  data:
+    - secretKey: DB_PASSWORD
+      remoteRef:
+        key: myapp/prod
+        property: db_password
+```
+
+In the prod overlay:
+```yaml
+components:
+  - ../../components/monitoring
+  - ../../components/external-secrets   # only prod uses Vault secrets
+```
+
+---
+
+### Component vs Overlay — When to Use Which
+
+| | Overlay | Component |
+|---|---|---|
+| Purpose | Full environment config (dev/staging/prod) | Optional feature that toggles on/off |
+| Has its own base | ✅ References base with `resources` | ❌ Cannot reference a base |
+| Can be included in overlays | N/A | ✅ Yes, with `components:` |
+| Examples | dev config, prod config | monitoring, external secrets, HPA, ingress |
+
+---
+
+## 11. Command Reference
+
+| Command | What it Does |
+|---|---|
+| `kubectl kustomize <dir>` | Build and **print** the final YAML — does NOT apply to cluster |
+| `kubectl apply -k <dir>` | Build and **apply** to cluster |
+| `kubectl delete -k <dir>` | Build and **delete** all those resources from cluster |
+| `kubectl diff -k <dir>` | Show what would **change** if you applied — compares cluster state vs kustomize output |
+| `kustomize build <dir>` | Same as `kubectl kustomize` using standalone CLI |
+| `kustomize build <dir> \| kubectl apply -f -` | Build with standalone CLI then pipe to kubectl |
+| `kustomize edit set image <name>=<name>:<tag>` | Auto-update the image tag in `kustomization.yaml` |
+| `kustomize version` | Show installed kustomize version |
+
+### Recommended workflow before every apply
+
+```bash
+# Step 1 — Preview what will be sent to Kubernetes
+kubectl kustomize ./overlays/prod/
+
+# Step 2 — See what will change vs what is already in the cluster
+kubectl diff -k ./overlays/prod/
+
+# Step 3 — Apply only after you've reviewed
+kubectl apply -k ./overlays/prod/
+```
+
+---
+
+## 12. Quick Reference Cheatsheet
 
 ```yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# Include files or other kustomize directories
+# ── RESOURCES ──────────────────────────────────────────
 resources:
-  - deployment.yaml
+  - deployment.yaml             # include a file
   - service.yaml
-  - ../../base
+  - ../../base                  # include another kustomize directory (base)
 
-# Set namespace for all resources
-namespace: prod
+# ── TRANSFORMERS ───────────────────────────────────────
+namespace: prod                 # set namespace on all resources
 
-# Add prefix to all resource names
-namePrefix: prod-
+namePrefix: prod-               # prepend to all resource names
+nameSuffix: -v2                 # append to all resource names
 
-# Add suffix to all resource names
-nameSuffix: -v2
-
-# Add labels to all resources
 commonLabels:
   env: prod
   app: myapp
 
-# Add annotations to all resources
 commonAnnotations:
   owner: platform-team
 
-# Override image tags
+# ── IMAGE TRANSFORMER ──────────────────────────────────
 images:
-  - name: myrepo/myapp
-    newTag: "v1.0.0"
+  - name: myrepo/myapp          # image name to match in manifests
+    newName: gcr.io/proj/myapp  # optional: change registry/name
+    newTag: "v1.0.0"            # change tag
+    # digest: sha256:abc123     # or pin by digest
 
-# Apply strategic merge patches
+# ── PATCHES ────────────────────────────────────────────
 patches:
-  - path: my-patch.yaml
-  - target:             # inline JSON patch
+  # Strategic merge patch from file
+  - path: patches/replica-patch.yaml
+
+  # Inline JSON 6902 patch
+  - target:
       kind: Deployment
       name: myapp
     patch: |
       - op: replace
         path: /spec/replicas
         value: 3
+      - op: add
+        path: /spec/template/spec/containers/0/env
+        value:
+          - name: ENV
+            value: "production"
 
-# Generate ConfigMaps
+# ── GENERATORS ─────────────────────────────────────────
 configMapGenerator:
   - name: app-config
     literals:
-      - KEY=value
+      - APP_ENV=production
     envs:
-      - app.env
+      - app.env                 # from .env file
     files:
-      - config.properties
+      - nginx.conf              # file content as ConfigMap value
+    options:
+      disableNameSuffixHash: true   # disable the auto hash
 
-# Generate Secrets
 secretGenerator:
   - name: db-secret
     literals:
-      - DB_PASS=secret
+      - DB_USER=admin
+      - DB_PASSWORD=secret
     type: Opaque
 
-# Include reusable components
+# ── COMPONENTS ─────────────────────────────────────────
 components:
   - ../../components/monitoring
+  - ../../components/external-secrets
 ```
-
----
-
-## Key Takeaways
-
-- Kustomize is **not a templating tool** — there are no `{{ }}` placeholders. Everything is plain YAML.
-- The `kustomization.yaml` file is **mandatory** in every Kustomize directory.
-- **Base** = the common config. **Overlay** = environment-specific changes on top.
-- Patches only contain the **fields you want to change** — the rest comes from the base.
-- `kubectl kustomize <dir>` lets you **preview** the final YAML before applying — always do this first.
-- Kustomize is **built into kubectl** — no extra install needed for basic use.
-- Store everything in **Git** — bases, overlays, and patches. This is the GitOps way.
