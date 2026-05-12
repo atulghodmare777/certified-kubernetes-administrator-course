@@ -1,14 +1,4 @@
 # Kustomize — Notes from Zero to Real Usage
-
-> **Who is this for?**
-> Anyone who already knows Kubernetes (Pods, Deployments, Services, ConfigMaps, Namespaces, YAML)
-> and is learning Kustomize for the first time.
->
-> **How to read this:**
-> Go section by section in order. Each section builds on the previous one.
-> Do not skip ahead — concepts like patches and overlays will only make sense
-> after you understand the base structure.
-
 ---
 
 ## Table of Contents
