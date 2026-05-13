@@ -7,19 +7,20 @@
 2. [Installation](#2-installation)
 3. [Your First Kustomize Setup — Managing a Directory](#3-your-first-kustomize-setup--managing-a-directory)
 4. [Managing Subdirectories](#4-managing-subdirectories)
-5. [Common Transformers](#5-common-transformers)
-6. [Image Transformer](#6-image-transformer)
-7. [Patches](#7-patches)
-   - [Strategic Merge Patch](#71-strategic-merge-patch)
-   - [JSON 6902 Patch](#72-json-6902-patch)
-   - [Inline Patch vs Patch File](#73-inline-patch-vs-patch-file)
-   - [Patches Directory](#74-patches-directory)
-   - [Patches List](#75-patches-list)
-8. [ConfigMap and Secret Generators](#8-configmap-and-secret-generators)
-9. [Overlays — Managing Multiple Environments](#9-overlays--managing-multiple-environments)
-10. [Components — Reusable Kustomize Modules](#10-components--reusable-kustomize-modules)
-11. [Command Reference](#11-command-reference)
-12. [Quick Reference Cheatsheet](#12-quick-reference-cheatsheet)
+5. [Subfolders with Their Own kustomization.yaml](#5-subfolders-with-their-own-kustomizationyaml)
+6. [Common Transformers](#6-common-transformers)
+7. [Image Transformer](#7-image-transformer)
+8. [Patches](#8-patches)
+   - [Strategic Merge Patch](#81-strategic-merge-patch)
+   - [JSON 6902 Patch](#82-json-6902-patch)
+   - [Inline Patch vs Patch File](#83-inline-patch-vs-patch-file)
+   - [Patches Directory](#84-patches-directory)
+   - [Patches List](#85-patches-list)
+9. [ConfigMap and Secret Generators](#9-configmap-and-secret-generators)
+10. [Overlays — Managing Multiple Environments](#10-overlays--managing-multiple-environments)
+11. [Components — Reusable Kustomize Modules](#11-components--reusable-kustomize-modules)
+12. [Command Reference](#12-command-reference)
+13. [Quick Reference Cheatsheet](#13-quick-reference-cheatsheet)
 
 ---
 
@@ -301,11 +302,281 @@ resources:
   - deployment.yaml
 ```
 
-This is how **overlays** reference a **base** — covered in detail in Section 9.
+This is how **overlays** reference a **base** — covered in detail in Section 10.
 
 ---
 
-## 5. Common Transformers
+## 5. Subfolders with Their Own kustomization.yaml
+
+This is a concept that trips people up, so it deserves its own dedicated section.
+
+### The Core Idea
+
+When a subfolder has its **own `kustomization.yaml`**, Kustomize treats it as a **self-contained unit** — a mini Kustomize project. The parent `kustomization.yaml` does not see the individual files inside that subfolder. It only sees the **final output** that the subfolder's `kustomization.yaml` produces.
+
+Think of it as delegation:
+- Parent says: "include this subfolder"
+- Subfolder has its own `kustomization.yaml` that says: "here are MY files and MY transforms"
+- Parent receives the already-processed result
+
+### Why Would You Use This?
+
+In a monorepo or a large project, you might have multiple independent services or feature groups. Each one has its own set of resources and possibly its own transformations (labels, patches, generators). You want each team or module to own its own Kustomize config, and a top-level config that pulls them all together.
+
+---
+
+### Example — Monorepo with Multiple Services
+
+Folder structure:
+
+```
+project/
+├── kustomization.yaml          ← root, pulls everything together
+├── frontend/
+│   ├── kustomization.yaml      ← owns frontend resources
+│   ├── deployment.yaml
+│   └── service.yaml
+├── backend/
+│   ├── kustomization.yaml      ← owns backend resources
+│   ├── deployment.yaml
+│   ├── service.yaml
+│   └── hpa.yaml
+└── database/
+    ├── kustomization.yaml      ← owns database resources
+    ├── statefulset.yaml
+    └── service.yaml
+```
+
+**frontend/kustomization.yaml**
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - deployment.yaml
+  - service.yaml
+
+commonLabels:
+  app: frontend
+  tier: ui
+```
+
+**backend/kustomization.yaml**
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - deployment.yaml
+  - service.yaml
+  - hpa.yaml
+
+commonLabels:
+  app: backend
+  tier: api
+
+images:
+  - name: myrepo/backend
+    newTag: "v2.1.0"
+```
+
+**database/kustomization.yaml**
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - statefulset.yaml
+  - service.yaml
+
+commonLabels:
+  app: database
+  tier: data
+```
+
+**Root kustomization.yaml** — references the subfolders, NOT the individual files:
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - frontend/       # ← Kustomize runs frontend/kustomization.yaml first, then includes the result
+  - backend/        # ← same for backend
+  - database/       # ← same for database
+
+namespace: production
+
+commonAnnotations:
+  managed-by: kustomize
+  team: platform
+```
+
+When you run `kubectl kustomize ./project/`, here is what happens:
+
+```
+Root kustomization.yaml
+    ├── runs frontend/kustomization.yaml → gets labeled frontend resources
+    ├── runs backend/kustomization.yaml  → gets labeled backend resources with new image tag
+    └── runs database/kustomization.yaml → gets labeled database resources
+            ↓
+All results combined into one output
+            ↓
+Root applies namespace: production and commonAnnotations to everything
+            ↓
+Final complete YAML
+```
+
+Each subfolder's own labels and image transforms are applied first. Then the root-level namespace and annotations are layered on top.
+
+---
+
+### Important: File vs Folder Reference Behavior
+
+This distinction is critical and easy to get wrong.
+
+**Referencing a file directly:**
+```yaml
+resources:
+  - backend/deployment.yaml   # reads ONLY this one file, ignores backend/kustomization.yaml
+```
+
+**Referencing a folder:**
+```yaml
+resources:
+  - backend/                  # reads backend/kustomization.yaml, which controls what gets included
+```
+
+If the folder has a `kustomization.yaml`, always reference the folder — not the individual files inside it. Referencing individual files bypasses that subfolder's own configuration entirely.
+
+---
+
+### Example — Subfolder with Its Own Patches
+
+Subfolders with their own `kustomization.yaml` can also have their own patches, generators, and transformers. The parent never needs to know about these internals.
+
+```
+project/
+├── kustomization.yaml
+└── backend/
+    ├── kustomization.yaml
+    ├── deployment.yaml
+    ├── service.yaml
+    └── patches/
+        └── resource-limits.yaml
+```
+
+**backend/patches/resource-limits.yaml**
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+spec:
+  template:
+    spec:
+      containers:
+        - name: backend
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+```
+
+**backend/kustomization.yaml**
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - deployment.yaml
+  - service.yaml
+
+patches:
+  - path: patches/resource-limits.yaml
+```
+
+The root `kustomization.yaml` just includes `backend/` as a resource — it has no knowledge of the patches inside. The patches are entirely the backend subfolder's responsibility.
+
+---
+
+### Example — Combining Overlays with Subfolder kustomization.yaml
+
+This is a powerful pattern for large projects: subfolders contain per-service base configs, and overlays on top select the environment.
+
+```
+project/
+├── services/
+│   ├── frontend/
+│   │   ├── kustomization.yaml
+│   │   ├── deployment.yaml
+│   │   └── service.yaml
+│   └── backend/
+│       ├── kustomization.yaml
+│       ├── deployment.yaml
+│       └── service.yaml
+└── overlays/
+    ├── dev/
+    │   └── kustomization.yaml
+    └── prod/
+        └── kustomization.yaml
+```
+
+**overlays/dev/kustomization.yaml**
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../services/frontend/    # ← includes frontend's own kustomization.yaml
+  - ../../services/backend/     # ← includes backend's own kustomization.yaml
+
+namespace: dev
+
+commonLabels:
+  env: dev
+```
+
+**overlays/prod/kustomization.yaml**
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../services/frontend/
+  - ../../services/backend/
+
+namespace: prod
+
+commonLabels:
+  env: prod
+
+images:
+  - name: myrepo/frontend
+    newTag: "v3.0.0"
+  - name: myrepo/backend
+    newTag: "v2.1.0"
+```
+
+Each service folder manages its own internal configuration. The overlays only care about environment-level concerns — namespace, image tags, labels. Clean separation of responsibilities.
+
+---
+
+### Summary — When to Give a Subfolder Its Own kustomization.yaml
+
+| Situation | Use subfolder kustomization.yaml? |
+|---|---|
+| Subfolder is just for file organization (no transforms) | ❌ Not needed — reference files directly |
+| Subfolder represents an independent service or module | ✅ Yes |
+| Subfolder needs its own patches, labels, or image overrides | ✅ Yes |
+| Multiple teams each own their piece of the repo | ✅ Yes |
+| You want the parent to be unaware of subfolder internals | ✅ Yes |
+
+---
+
+## 6. Common Transformers
 
 Transformers are **built-in operations** in Kustomize that automatically apply a change
 across **all resources** listed in your `kustomization.yaml`.
@@ -313,7 +584,7 @@ You declare them once and they apply everywhere — no need to touch individual 
 
 ---
 
-### 5.1 namespace — Set Namespace on All Resources
+### 6.1 namespace — Set Namespace on All Resources
 
 Sets the `metadata.namespace` field on every resource at once.
 
@@ -338,7 +609,7 @@ even though neither file mentions a namespace.
 
 ---
 
-### 5.2 namePrefix and nameSuffix — Add Prefix or Suffix to All Names
+### 6.2 namePrefix and nameSuffix — Add Prefix or Suffix to All Names
 
 Automatically prepends or appends a string to `metadata.name` of every resource.
 
@@ -363,7 +634,7 @@ name collisions would otherwise occur. Adding `dev-` or `prod-` as a prefix make
 
 ---
 
-### 5.3 commonLabels — Add Labels to All Resources
+### 6.3 commonLabels — Add Labels to All Resources
 
 Adds the same set of labels to the `metadata.labels` of every resource.
 For Deployments and Services it also adds labels to `spec.selector` and `spec.template.metadata.labels`.
@@ -391,7 +662,7 @@ like Prometheus, Datadog, or ArgoCD identify and group resources.
 
 ---
 
-### 5.4 commonAnnotations — Add Annotations to All Resources
+### 6.4 commonAnnotations — Add Annotations to All Resources
 
 Same idea as `commonLabels` but for annotations.
 
@@ -449,7 +720,7 @@ None of the original YAML files were touched.
 
 ---
 
-## 6. Image Transformer
+## 7. Image Transformer
 
 The image transformer lets you change the **container image name, tag, or digest**
 across all resources without touching any YAML file.
@@ -547,7 +818,7 @@ Then you apply — the deployment gets the new image with zero manual file editi
 
 ---
 
-## 7. Patches
+## 8. Patches
 
 A **patch** is a file or inline block that modifies a specific field inside a specific resource.
 
@@ -556,7 +827,7 @@ and change only the fields you specify. Everything else in that resource stays u
 
 ---
 
-### 7.1 Strategic Merge Patch
+### 8.1 Strategic Merge Patch
 
 A **Strategic Merge Patch** looks like a partial copy of the resource you want to modify.
 You write only the fields you want to change. Kustomize finds the matching resource
@@ -659,7 +930,7 @@ The base file itself is never modified.
 
 ---
 
-### 7.2 JSON 6902 Patch
+### 8.2 JSON 6902 Patch
 
 A **JSON 6902 Patch** is more precise. Instead of writing a partial YAML,
 you write explicit operations with a path to the exact field.
@@ -757,7 +1028,7 @@ patches:
 
 ---
 
-### 7.3 Inline Patch vs Patch File
+### 8.3 Inline Patch vs Patch File
 
 You have two ways to write a patch:
 
@@ -799,7 +1070,7 @@ patches:
 
 ---
 
-### 7.4 Patches Directory
+### 8.4 Patches Directory
 
 When you have many patches, keep them in a dedicated `patches/` subdirectory
 to keep the folder clean and organized.
@@ -883,7 +1154,7 @@ Kustomize applies all three patches in order. The final Deployment has all three
 
 ---
 
-### 7.5 Patches List — Targeting Multiple Resources with One Entry
+### 8.5 Patches List — Targeting Multiple Resources with One Entry
 
 When you have a patch that applies to **multiple resources**, you can use a `target`
 with broader selectors instead of writing separate patch entries.
@@ -940,14 +1211,14 @@ They are all processed in the order listed.
 
 ---
 
-## 8. ConfigMap and Secret Generators
+## 9. ConfigMap and Secret Generators
 
 Generators let Kustomize **create** Kubernetes resources for you from plain files
 or key-value pairs — without you having to write the full YAML for them.
 
 ---
 
-### 8.1 configMapGenerator
+### 9.1 configMapGenerator
 
 Instead of writing a ConfigMap YAML by hand, you can generate it from:
 - Literal key=value pairs
@@ -1060,7 +1331,7 @@ You write `app-config` in the deployment — Kustomize automatically rewrites it
 
 ---
 
-### 8.2 secretGenerator
+### 9.2 secretGenerator
 
 Same as `configMapGenerator` but creates a Kubernetes Secret.
 Values are base64 encoded automatically by Kubernetes.
@@ -1091,7 +1362,7 @@ secretGenerator:
 
 ---
 
-## 9. Overlays — Managing Multiple Environments
+## 10. Overlays — Managing Multiple Environments
 
 This is the most important concept in Kustomize. Everything you learned so far
 builds up to this.
@@ -1387,7 +1658,7 @@ kubectl delete -k ./overlays/dev/
 
 ---
 
-## 10. Components — Reusable Kustomize Modules
+## 11. Components — Reusable Kustomize Modules
 
 A **Component** is a reusable piece of Kustomize config — like a plugin that you can
 switch on or off per environment.
@@ -1551,7 +1822,7 @@ components:
 
 ---
 
-## 11. Command Reference
+## 12. Command Reference
 
 | Command | What it Does |
 |---|---|
@@ -1579,7 +1850,7 @@ kubectl apply -k ./overlays/prod/
 
 ---
 
-## 12. Quick Reference Cheatsheet
+## 13. Quick Reference Cheatsheet
 
 ```yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -1590,6 +1861,8 @@ resources:
   - deployment.yaml             # include a file
   - service.yaml
   - ../../base                  # include another kustomize directory (base)
+  - ./frontend/                 # include a subfolder that has its own kustomization.yaml
+  - ./backend/                  # each subfolder is processed independently first
 
 # ── TRANSFORMERS ───────────────────────────────────────
 namespace: prod                 # set namespace on all resources
@@ -1654,3 +1927,13 @@ components:
   - ../../components/monitoring
   - ../../components/external-secrets
 ```
+
+### Subfolder kustomization.yaml — Key Rules to Remember
+
+| Rule | Detail |
+|---|---|
+| Reference the folder, not the files | `- backend/` not `- backend/deployment.yaml` |
+| Subfolder transforms apply first | Labels, patches, image overrides inside a subfolder run before the parent's |
+| Parent transforms apply on top | Namespace, commonLabels at root level are applied after subfolders resolve |
+| No `kustomization.yaml` in subfolder? | Kustomize will error if you reference a folder without one |
+| Subfolder can reference its own base | Works just like overlays — `resources: - ../../some-base/` |
