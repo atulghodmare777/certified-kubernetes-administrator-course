@@ -26,7 +26,7 @@
       1. Check kubelet status
 
          ```bash
-         systemctl status kubelet
+         systemctl status kubelet or service kubelet status
          ```
 
          We can see from the output that kublet is not running, in fact it has exited. Therefore we should try starting it.
@@ -34,13 +34,13 @@
       1. Start kubelet
 
          ```bash
-         systemctl start kubelet
+         systemctl start kubelet or service kubelet start
          ```
 
       1. Now check it is OK.
 
          ```bash
-         systemctl status kubelet
+         systemctl status kubelet or service kubelet status
          ```
 
          Now we can see it is `active (running)`, which is good.
