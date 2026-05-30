@@ -380,7 +380,77 @@ gke-n7-playground-cl-nvizstore-solr-p-86743cd7-kcxg   1
 gke-n7-playground-cl-nvizstore-solr-p-86743cd7-lnk5   1
 
 # jsonpath for sort
+Note: In this no need to mention .items[*] as it already assumes
 k get nodes --sort-by=.metadata.name
 k get nodes --sort-by=.status.capacity.cpu
+k get pv --sort-by=.spec.capacity.storage
+Note:
+suppose want to sort by capacity and want custom columns node and capacity then use following expression
+k get pv --sort-by=.spec.capacity.storage -o=custom-columns=NODE:.metadata.name,CAPACITY:.spec.capacity.storage
 
+suppose want to retrieve context of aws-user from following file how to do it, the config file is present at root location
+```
+apiVersion: v1
+kind: Config
+
+clusters:
+- name: production
+  cluster:
+    certificate-authority: /etc/kubernetes/pki/ca.crt
+    server: KUBE_ADDRESS
+
+- name: development
+  cluster:
+    certificate-authority: /etc/kubernetes/pki/ca.crt
+    server: KUBE_ADDRESS
+
+- name: kubernetes-on-aws
+  cluster:
+    certificate-authority: /etc/kubernetes/pki/ca.crt
+    server: KUBE_ADDRESS
+
+- name: test-cluster-1
+  cluster:
+    certificate-authority: /etc/kubernetes/pki/ca.crt
+    server: KUBE_ADDRESS
+
+contexts:
+- name: test-user@development
+  context:
+    cluster: development
+    user: test-user
+
+- name: aws-user@kubernetes-on-aws
+  context:
+    cluster: kubernetes-on-aws
+    user: aws-user
+
+- name: test-user@production
+  context:
+    cluster: production
+    user: test-user
+
+- name: research
+  context:
+    cluster: test-cluster-1
+    user: dev-user
+
+users:
+- name: test-user
+  user:
+    client-certificate: /etc/kubernetes/pki/users/test-user/test-user.crt
+    client-key: /etc/kubernetes/pki/users/test-user/test-user.key
+- name: dev-user
+  user:
+    client-certificate: /etc/kubernetes/pki/users/dev-user/developer-user.crt
+    client-key: /etc/kubernetes/pki/users/dev-user/dev-user.key
+- name: aws-user
+  user:
+    client-certificate: /etc/kubernetes/pki/users/aws-user/aws-user.crt
+    client-key: /etc/kubernetes/pki/users/aws-user/aws-user.key
+
+current-context: test-user@development
+preferences: {}
+```
+k config view --kubeconfig=/root/my-kube-config -o=jsonpath="{.contexts[?(@.context.user=='aws-user')].name}"
 
